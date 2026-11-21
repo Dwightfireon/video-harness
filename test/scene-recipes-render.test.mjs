@@ -81,3 +81,23 @@ for (const aspect of ['16:9', '9:16']) {
     }
   });
 }
+
+for (const [key, layoutName] of [['funnel-flow', '漏斗损耗'], ['state-chain', '主体状态演进'], ['curve-reveal', '曲线演进']]) {
+  for (const aspect of ['16:9', '9:16']) {
+    test(`新机制图元 ${key}（${aspect}）：真实构建与停稳帧硬伤快检 0 问题`, { timeout: 120000 }, async t => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), `vh-recipe-${key}-`));
+      t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+      let result = run(['new', dir, '--aspect', aspect]);
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      fs.writeFileSync(path.join(dir, '脚本.md'), script);
+      fs.writeFileSync(path.join(dir, 'scenes.src.js'), withSceneMetadata(RECIPES[key].code(), { layout: layoutName }) + '\n');
+      result = run(['build', '--estimate', '--dir', dir]);
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      const fast = run(['visual-fast', '--strict', '--json', '--dir', dir]);
+      assert.equal(fast.status, 0, fast.stdout + fast.stderr);
+      const parsed = JSON.parse(fast.stdout);
+      assert.equal(parsed.ok, true, JSON.stringify(parsed.findings));
+      assert.equal(parsed.sampled, 1);
+    });
+  }
+}

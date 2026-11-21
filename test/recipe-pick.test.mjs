@@ -105,3 +105,20 @@ test('pick：多场各自独立判断（不会一场定全片）', () => {
   assert.equal(r.scenes.length, 2);
   assert.notEqual(r.scenes[0].key, r.scenes[1].key);
 });
+
+test('pick：漏斗损耗、状态演进与曲线衰减线索分别命中新配方', () => {
+  const f = makeProject('漏斗', [
+    '三万八千条候选经过外部复核和确认，最终只剩两百多条修复，断点卡在人工分流。',
+  ]);
+  assert.equal(pick(f).scenes[0].key, 'funnel-flow');
+
+  const s = makeProject('状态传播', [
+    '某一步出错导致状态污染，后续动作沿着错误结果传播，直到外部检查拦截并重建状态才恢复。',
+  ]);
+  assert.equal(pick(s).scenes[0].key, 'state-chain');
+
+  const c = makeProject('几何衰减', [
+    '按 r^H 几何衰减曲线计算，步数一长成功率快速塌陷并跌破可用门槛。',
+  ]);
+  assert.equal(pick(c).scenes[0].key, 'curve-reveal');
+});

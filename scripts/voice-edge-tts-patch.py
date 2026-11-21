@@ -243,8 +243,32 @@ def synth_cached(text, speed):
         _sentence_audio[key] = reference
     return _sentence_wave(_sentence_audio[key])
 
+def _load_tts_lexicon():
+    for candidate in (HERE / "assets/tts-lexicon.json", HERE.parent.parent / "assets/tts-lexicon.json"):
+        try:
+            if candidate.is_file() and not candidate.is_symlink():
+                data = json.loads(candidate.read_text(encoding="utf-8"))
+                if isinstance(data.get("replacements"), dict):
+                    return {str(k): str(v) for k, v in data["replacements"].items() if k and v}
+        except Exception:
+            pass
+    return {}
+
+_TTS_LEXICON = _load_tts_lexicon()
+
+def _normalize_tts_text(raw):
+    """仅作用于 TTS 合成文本的确定性口播读法预处理，不改写字幕显示。"""
+    text = raw.replace("·", "，")
+    text = re.sub(r"([A-Za-z0-9]+)\\s*\\^\\s*([A-Za-z0-9]+)", r"\\1的\\2次方", text)
+    text = re.sub(r"(\\d+(?:\\.\\d+)?)\\s*×", r"\\1倍", text)
+    text = re.sub(r"\\s*→\\s*", "到", text)
+    if _TTS_LEXICON:
+        for src_tok in sorted(_TTS_LEXICON, key=len, reverse=True):
+            text = re.sub(r"(?<![A-Za-z0-9_])" + re.escape(src_tok) + r"(?![A-Za-z0-9_])", _TTS_LEXICON[src_tok], text)
+    return re.sub(r"\\s+", "", text)
+
 clips = []
-texts = [re.sub(r"\\s+", "", sub["t"].replace("·", "，")) for sub in SUBS]
+texts = [_normalize_tts_text(sub["t"]) for sub in SUBS]
 # 计数仍按字幕句数，去重按音色 + 精确语速 + 规范化文本，不把统计当请求数。
 pending = {}
 lookups = {}

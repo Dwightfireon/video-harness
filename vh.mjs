@@ -1868,6 +1868,22 @@ async function cmdRhythm() {
   if (has('strict') && res.findings.length) process.exit(1);
   return res;
 }
+async function cmdVisualFast() {
+  const project = resolveProject(getArg('dir', ''));
+  const { runVisualFastGuard, report } = await import('./lib/visual-fast-guard.mjs');
+  const res = await runVisualFastGuard(project);
+  console.log(has('json') ? JSON.stringify(res, null, 2) : report(res));
+  if ((has('strict') || !res.sampled) && !res.ok) process.exit(1);
+  return res;
+}
+async function cmdScriptPacing() {
+  const project = resolveProject(getArg('dir', ''));
+  const { analyzeScriptPacing, report } = await import('./lib/script-pacing.mjs');
+  const res = analyzeScriptPacing(project);
+  console.log(has('json') ? JSON.stringify(res, null, 2) : report(res));
+  if (has('strict') && !res.ok) process.exit(1);
+  return res;
+}
 async function cmdMotion() {
   const project = resolveProject(getArg('dir', ''));
   const { scan, report } = await import('./lib/motion.mjs');
@@ -3260,6 +3276,8 @@ async function cmdContentReview() {
 
 const commands = {
   'author-check': cmdAuthorCheck,
+  'visual-fast': cmdVisualFast,
+  'script-pacing': cmdScriptPacing,
   'content-review': cmdContentReview,
   automation: cmdAutomation, workflow: cmdWorkflow, runner: cmdRunner, schedule: cmdSchedule, quality: cmdQuality,
   plan: cmdPlan, subtitles: cmdSubtitles,
@@ -3272,6 +3290,8 @@ const commands = {
 };
 const helpUsage = {
   'author-check': 'author-check [--kind script|clarity] [--show] [--terms "…"] [--json]  复用当前版本的完整作者检查；失败/待核不变，不调用模型，不影响出片缓存',
+  'visual-fast': 'visual-fast [--strict] [--json]       每场 1 个停稳帧秒级硬伤快检（越界/压字幕/裁切/重叠/白屏）；不替代人工审片',
+  'script-pacing': 'script-pacing [--strict] [--json]     纯确定性口播与场长节奏体检（开场长句/超长单场/句级锚点风险）',
   'content-review': 'content-review [--strict] [--independent [--max-output-tokens N] [--full] | --async [--full] | --record <JSON>]  用户主动选用的可选模型审稿，非默认制作步骤；--async 后台跑，--full 忽略增量；--record 仅旧契约；不是人工发布通过',
   automation: 'automation [--enable|--disable] [--max-repairs 0..5]  配置无人值守制作（不调用模型）',
   workflow: 'workflow [--profile content-first|audited] [--json]  内容优先（默认）或主动审校；不启用模型审稿',
