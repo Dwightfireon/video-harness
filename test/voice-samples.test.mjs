@@ -109,3 +109,20 @@ test('sample runner rejects unsupported engines and invalid speeds before synthe
     assert.equal(fs.existsSync(path.join(dir, 'must-not-exist.wav')), false);
   }
 });
+
+test('audition page renders per-line audio players and optional offline ASR clue without claiming listened', async t => {
+  const { writeAuditionPage } = await import('../lib/voice-samples.mjs');
+  const dir = fixture(t);
+  fs.writeFileSync(path.join(dir, '脚本.md'), '## S1 · 公式\n1. 成功率按 r^H 计算，提速 3.95×。\n');
+  const plan = planVoiceSamples(dir);
+  assert.match(plan.items[0].spokenText, /r的H次方/);
+  assert.match(plan.items[0].spokenText, /3\.95倍/);
+  const htmlFile = writeAuditionPage(dir, {
+    voice: plan.voice, speed: plan.speed, scope: plan.scope,
+    items: [{ scene: 1, line: 1, index: 1, file: 'line-1.wav', text: plan.items[0].text, risks: ['r^H'] }],
+  }, { ok: true, model: 'faster-whisper-small', items: [{ index: 1, transcript: '成功率按r的h次方计算' }] });
+  const html = fs.readFileSync(htmlFile, 'utf8');
+  assert.match(html, /<audio controls[^>]*src="line-1\.wav"/);
+  assert.match(html, /faster-whisper-small/);
+  assert.match(html, /不凭拼写差异自动断言念错/);
+});

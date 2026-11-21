@@ -63,3 +63,22 @@ test('主题：深色方向的中心辉光必须比浅色方向弱得多', () =>
   const light = Math.max(alpha(THEMES['warm-paper'].vars['--vignette']), alpha(THEMES.documentary.vars['--vignette']));
   assert.ok(dark < light / 4, `深色方向的 --vignette 透明度 ${dark} 相对浅色 ${light} 不够低：深底上同等强度就是"白雾"`);
 });
+
+test('主题：三套内置主题核心文字/强调色均满足 WCAG 对比度基线', async () => {
+  const { auditThemeContrast } = await import('../lib/theme.mjs');
+  for (const [key, theme] of Object.entries(THEMES)) {
+    const audit = auditThemeContrast(theme);
+    assert.equal(audit.ok, true, `主题 ${key} 对比度不足：` + JSON.stringify(audit.checks));
+  }
+});
+
+test('主题：suggestTheme 根据脚本题材给出可解释推荐且不修改模板', async () => {
+  const { suggestTheme } = await import('../lib/theme.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vh-theme-suggest-'));
+  try {
+    fs.writeFileSync(path.join(dir, '脚本.md'), '## S1\n1. 这是一个开源 CLI 工具的性能基准测试，比较 GPU 显卡与渲染框架版本。\n', 'utf8');
+    assert.equal(suggestTheme(dir).key, 'dark-stage');
+    fs.writeFileSync(path.join(dir, '脚本.md'), '## S1\n1. 我们核查了三篇论文的统计口径、样本分母、随机对照实验偏差和账单监管审计。\n', 'utf8');
+    assert.equal(suggestTheme(dir).key, 'documentary');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

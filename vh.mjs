@@ -831,7 +831,7 @@ async function cmdMeasure() {
 
 async function cmdVoiceSample() {
   const project = resolveProject(getArg('dir', ''));
-  const { planVoiceSamples, createVoiceSamples } = await import('./lib/voice-samples.mjs');
+  const { planVoiceSamples, createVoiceSamples, writeAuditionPage, runVoiceSampleAsr } = await import('./lib/voice-samples.mjs');
   const options = voiceParameters(project, { voice: getArg('voice', undefined), speed: getArg('speed', undefined) });
   if (has('lines')) options.lines = getArg('lines', '').split(',').map(Number);
   let plan; try { plan = planVoiceSamples(project, options); } catch (error) { die(error.message); }
@@ -839,8 +839,19 @@ async function cmdVoiceSample() {
   let result;
   try { result = await createVoiceSamples(project, plan, { run: productionCommand }); }
   catch (error) { die(error.message); }
+  const audition = writeAuditionPage(result.directory, result.manifest);
   say(`✓ ${result.reused ? '复用' : '生成'} ${result.manifest.items.length} 句配音小样：${result.directory}`);
   for (const item of result.manifest.items) say(`  ${item.file} · S${item.scene} 第${item.line}句 · ${item.text}`);
+  if (has('asr')) {
+    const asr = await runVoiceSampleAsr(result.directory, result.manifest, { run: productionCommand });
+    if (asr.ok) {
+      say(`✓ 离线转写（${asr.model}，仅作复听线索，不凭拼写差异断言念错）：`);
+      for (const row of asr.items || []) say(`  S${row.scene} 第${row.line}句 → ${row.transcript || row.error || '（空）'}`);
+    } else {
+      say(`· 离线转写跳过：${asr.reason}`);
+    }
+  }
+  say(`  试听页：${audition}`);
   say(plan.scope);
 }
 
@@ -1676,12 +1687,22 @@ async function cmdDist() {
 /* theme —— 美术方向（按内容选；只改 :root，场景代码不动）                  */
 /* =================================================================== */
 async function cmdTheme() {
-  const { THEMES, applyTheme } = await import('./lib/theme.mjs');
+  const { THEMES, applyTheme, suggestTheme } = await import('./lib/theme.mjs');
+  if (has('suggest')) {
+    const project = resolveProject(getArg('dir', ''));
+    const rec = suggestTheme(project);
+    if (has('json')) { console.log(JSON.stringify(rec, null, 2)); return; }
+    say(`建议美术方向：${rec.key}（${rec.name}）`);
+    say(`  依据：${rec.reason}`);
+    say(`  应用：node vh.mjs theme ${rec.key} --dir ${path.relative(process.cwd(), project) || '.'}（只给建议，不自动改写）`);
+    return;
+  }
   const key = args.slice(1).find(a => !a.startsWith('--'));
   if (!key || has('list')) {
     say('可选美术方向（references/art-directions.md）：\n');
     for (const [k, t] of Object.entries(THEMES)) say(`  ${k.padEnd(14)} ${t.name}\n      适合：${t.best}`);
     say('\n用法：node vh.mjs theme <方向>   （改 engine.tpl.html 的 :root，先备份）');
+    say('      node vh.mjs theme --suggest --dir <项目>  （按脚本线索推荐方向，只读）');
     say('应用后要 node vh.mjs build 重新生成 scene.html；再 vh stills 看对比度。');
     return;
   }
