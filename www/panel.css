@@ -1,0 +1,305 @@
+@import url('./theme.css');
+/* 映序 editor. Shared colors and typography live in theme.css. */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:var(--fs-body)/1.6 -apple-system,"PingFang SC","Hiragino Sans GB",system-ui,sans-serif;
+  display:flex; flex-direction:column; overflow:hidden;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+#top{
+  display:flex; align-items:center; gap:12px; min-height:64px; padding:12px 24px;flex-wrap:wrap;
+  background:var(--panel); border-bottom:1px solid var(--line); flex-shrink:0;
+}
+.brand{font-weight:500; letter-spacing:-.01em}
+.brand>a{font:500 21px var(--serif);letter-spacing:2px;text-decoration:none;margin-right:12px}
+.brand span{color:var(--ink3); font-weight:400; margin-left:8px; font-size:var(--fs-sm)}
+#chips{display:flex; gap:6px; flex-wrap:wrap}
+.chip{font-size:var(--fs-xs); padding:3px 9px; border-radius:999px; border:1px solid var(--line); color:var(--ink2);
+  font-variant-numeric:tabular-nums}
+.chip.bad{color:var(--bad); border-color:var(--bad)}
+.chip.warn{color:var(--warn); border-color:var(--warn)}
+.chip.ok{color:var(--ok); border-color:var(--ok)}
+.spacer{flex:1}
+button{
+  background:transparent; color:var(--ink); border:1px solid var(--line);
+  border-radius:var(--r-sm); padding:6px 12px; cursor:pointer; font-size:var(--fs-sm);
+  transition:border-color .12s ease, background .12s ease, color .12s ease;
+}
+button:hover:not(:disabled){border-color:var(--line-strong); background:var(--panel2)}
+button:disabled{opacity:.4; cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--accent2); outline-offset:1px;
+}
+#stillsStatus{font-size:12px;color:var(--ink2);overflow-wrap:anywhere}
+
+#formatControl{flex:0 0 auto; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px}
+.format-row{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.format-row label{font-size:12px; font-weight:600}
+#projectAspectRatio{max-width:100%; min-width:0; background:var(--panel2); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:6px 8px; font:inherit; font-size:12px}
+#projectAspectRatio:disabled{opacity:.6}
+#formatSaved{font-size:12px; color:var(--ink); margin-top:7px}
+#formatHelp,#formatStatus{font-size:12px; color:var(--ink2); margin-top:4px; overflow-wrap:anywhere}
+#formatStatus:empty{display:none}
+#formatStatus.warn{color:var(--warn)}
+#formatStatus.error{color:var(--bad)}
+
+/* 自动制作：状态读取不派发任务，旧回执与实时复核分开显示。 */
+#productionPanel{flex:0 0 auto;min-width:0;max-width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:12px;overflow-wrap:anywhere}
+#productionPanel summary{cursor:pointer;padding:10px 12px}
+#productionPanel summary:focus-visible,#productionPanel input:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+.production-summary{margin-left:10px;color:var(--ink2)}
+.production-glance{display:inline-block;margin-left:10px;color:var(--ink2);font-size:11px}
+.production-body{padding:0 12px 12px;min-width:0;max-height:48vh;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+#productionPanel progress{width:100%;height:5px;accent-color:var(--accent2)}
+.production-body p{margin:6px 0;white-space:pre-wrap}
+.production-body h3{font-size:13px;margin:12px 0 4px}
+.production-body h3[data-state="passed"]{color:var(--ok)}
+.production-body h3[data-state="failed"],.production-blockers strong{color:var(--bad)}
+.production-body h3[data-state="stale"],.production-body h3[data-state="unverified"]{color:var(--warn)}
+.production-checks{list-style:none;padding:0;display:grid;gap:6px}
+.production-checks li{min-width:0;padding:8px;border:1px solid var(--line);border-radius:7px}
+.production-checks li[data-state="failed"]{border-color:var(--bad)}
+.production-actions,.production-settings{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}
+.production-actions button,.production-settings button{max-width:100%;white-space:normal;overflow-wrap:anywhere;min-height:36px}
+.production-help,.production-caution{color:var(--ink2)}
+.production-caution{border-top:1px solid var(--line);padding-top:8px}
+.production-connection,.production-status,.production-settings [role="status"]{color:var(--warn);white-space:pre-wrap}
+.production-status:empty,.production-connection:empty{display:none}
+.production-advanced{margin-top:10px;border-top:1px solid var(--line)}
+#productionPanel .production-advanced summary{padding-left:0}
+.production-settings label{display:flex;align-items:center;gap:6px;max-width:100%}
+.production-settings select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px;font:inherit}
+.production-settings [role="status"]{flex-basis:100%}
+
+main{flex:1; display:flex; min-height:0}
+#stageCol{flex:1.45; min-width:0; display:flex; flex-direction:column; padding:24px; gap:16px; overflow:auto}
+#side{flex:1; min-width:380px; max-width:540px; border-left:1px solid var(--line);
+  background:var(--panel); display:flex; flex-direction:column}
+
+/* 播放画面按实际画布比例展示，旧预览不冒充已更新的新比例。 */
+#frameWrap{position:relative; width:100%; aspect-ratio:16/9; align-self:center; background:#000; border-radius:10px; overflow:hidden; flex:0 0 auto}
+#frame{position:absolute; left:50%; top:50%; border:0; display:block; transform-origin:center center; background:#F6F7F6}
+#reloading{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.55); color:#fff}
+.hidden{display:none !important}
+
+#transport{display:flex; align-items:center; gap:10px}
+#play.icon{width:38px; height:32px; font-size:14px}
+#mute.icon{width:44px; height:32px; font-size:14px}
+#tclock{font-family:var(--mono); font-size:12px; color:var(--ink2); white-space:nowrap}
+#scrub{flex:1; accent-color:var(--accent2)}
+#speed{background:var(--panel2); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:4px 6px; font-size:12px}
+
+/* 场次章节条 */
+#chapters{display:flex; gap:4px; flex-wrap:wrap; min-height:26px}
+.chapt{
+  font-size:11px; font-family:var(--mono); color:var(--ink2); cursor:pointer;
+  border:1px solid var(--line); border-radius:6px; padding:2px 8px; background:var(--panel);
+}
+.chapt.on{color:#fff; background:var(--accent); border-color:var(--accent)}
+#keys{font-size:11px; color:var(--ink2)}
+
+/* 右栏 */
+#tabs{display:flex; border-bottom:1px solid var(--line); flex-shrink:0}
+#tabs button{border:0; border-radius:0; background:none; padding:11px 14px; color:var(--ink3);
+  font-size:var(--fs-sm); border-bottom:1.5px solid transparent; transition:color .12s ease}
+#tabs button:hover:not(:disabled){background:none; border-bottom-color:var(--line-strong); color:var(--ink2)}
+#tabs button.on{color:var(--ink); border-bottom-color:var(--accent2)}
+.tab{display:none; overflow:auto; padding:16px 18px 24px; flex:1; min-height:0}
+.tab.on{display:block}
+
+/* 脚本对照 */
+.sec{margin-bottom:18px}
+.sec h3{font-size:12px; color:var(--ink2); margin:0 0 6px; font-weight:600;
+  display:flex; justify-content:space-between; align-items:baseline}
+.sec h3 .t{font-family:var(--mono); color:var(--ink2); font-size:11px}
+.line{display:flex; gap:8px; padding:4px 8px; border-radius:7px; cursor:pointer}
+.line:hover{background:var(--panel2)}
+.line.now{background:var(--accent-soft); outline:1px solid #cfd8c8}
+.line .no{color:var(--ink2); font-family:var(--mono); font-size:11px; min-width:16px; padding-top:2px}
+.line .tt{flex:1}
+.line .cell{font-family:var(--mono); font-size:10px; color:var(--ink2); padding-top:3px; white-space:nowrap}
+.line.now .cell{color:var(--ok)}
+.hint{color:var(--ink2); font-size:12px; padding:8px}
+
+/* 分镜 */
+.board-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.card{background:var(--panel2); border:1px solid var(--line); border-radius:10px; overflow:hidden; cursor:pointer}
+.card:hover{border-color:var(--accent2)}
+.card img{width:100%; display:block; aspect-ratio:16/9; object-fit:cover; background:#000}
+.card .meta{padding:6px 8px; font-size:11px; color:var(--ink2)}
+.card .meta b{color:var(--ink); margin-right:6px}
+.card .meta .chg{color:var(--warn)}
+
+/* 成片 */
+.vitem{margin-bottom:16px;}
+.vitem video{width:100%; border-radius:10px; background:#000}
+.vitem .cap{font-size:12px; color:var(--ink2); margin:4px 0 8px}
+.vitem .cap a{color:var(--accent2)}
+
+/* 发布 */
+#projectOverview{flex:0 0 auto;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:12px}
+#projectHeadline{font-weight:700;font-size:14px}
+#projectSteps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;list-style:none;padding:0;margin:10px 0}
+#projectSteps li{border-left:2px solid var(--line);padding-left:8px;overflow-wrap:anywhere}
+#projectSteps li[data-state="done"]{border-color:var(--accent2)}
+#projectSteps small{display:block;color:var(--ink2);font-size:11px}
+.overview-next{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#projectNextDetail{flex:1;min-width:160px;color:var(--ink2);overflow-wrap:anywhere}
+#stateConnection{color:var(--warn);white-space:pre-wrap;margin-top:6px}
+.draft-control{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--ink2);line-height:1.5}
+@media(max-width:600px){#projectSteps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+#publish.on{display:flex;flex-direction:column;gap:12px}
+#publish.on > *{flex:0 0 auto}          /* 别把每个发布块压扁（内容会溢出盒子） */
+#publish .pbody{overflow-wrap:anywhere}
+.ptools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.publish-status{padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);white-space:pre-wrap;font-size:13px;line-height:1.7;overflow-wrap:anywhere}
+.publish-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px}
+.publish-actions label{display:flex;gap:6px;align-items:center}
+.publish-actions select{max-width:100%;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px}
+.btnmini{font-size:11px;padding:3px 10px;border:1px solid var(--line);border-radius:8px;color:var(--ink2);text-decoration:none}
+.btnmini:hover{border-color:var(--accent2);color:var(--ink)}
+.pblock{background:var(--panel2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.phead{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;
+  font-size:11.5px;color:var(--ink2);border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
+.pbody{padding:12px;font-size:13.5px;line-height:1.65;white-space:pre-wrap}
+.pbody.mono{font-family:var(--mono);font-size:12px;color:var(--ink2)}
+
+/* 记忆 */
+#memBox{font-size:11.5px;color:var(--ink2)}
+#memBox summary{cursor:pointer;padding:4px 0;color:var(--ink3)}
+#chatMemory{margin-top:6px;display:flex;flex-direction:column;gap:6px}
+.memrow{background:var(--panel2);border-radius:8px;padding:7px 10px;line-height:1.5}
+.memu{color:var(--ink)}
+.memr{display:block;color:var(--ink3);margin-top:2px}
+
+/* 指挥（聊天） */
+#chat.on{display:flex; flex-direction:column; gap:10px}
+#chatHead{display:flex; align-items:center; gap:10px; font-size:12px; color:var(--ink2)}
+#chatState{padding:2px 10px; border:1px solid var(--line); border-radius:10px}
+#chatState.busy{color:var(--warn); border-color:var(--warn)}
+#modes{display:flex; gap:6px}
+#modes button{font-size:12px; padding:5px 10px; border-radius:999px}
+#modes button.on{background:var(--accent); border-color:var(--accent); color:#fff}
+#modeHint{font-size:11.5px; line-height:1.5; padding:6px 2px}
+#chatLog{flex:1; min-height:120px; overflow:auto; background:var(--panel2); border:1px solid var(--line);
+  border-radius:10px; padding:12px; font-family:var(--mono); font-size:11.5px; line-height:1.5; white-space:pre-wrap; color:var(--ink2)}
+#chatQuick{display:flex; gap:6px; flex-wrap:wrap}
+#chatQuick button{font-size:11px; padding:4px 10px}
+#chatInputRow{display:flex; gap:8px}
+#chatInput{flex:1; background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+  border-radius:10px; padding:10px; font-size:13px; resize:vertical; min-height:64px; font-family:inherit}
+#chatSend{width:86px}
+#chatSend:disabled{opacity:.4}
+#attachRow{display:flex; align-items:center; gap:8px; font-size:11px; color:var(--ink2); cursor:pointer}
+#attachRow input{display:none}
+#attachLabel{border:1px dashed var(--line); border-radius:8px; padding:6px 10px; width:100%}
+#attachLabel.has{border-color:var(--accent2); color:var(--ok)}
+
+@media(max-width:900px){
+  #top{height:auto; min-height:44px; padding:8px 12px; flex-wrap:wrap}
+  #chips{flex:1 1 100%; order:1}
+}
+@media(max-width:700px){
+  body{overflow:auto; height:auto; min-height:100%}
+  main{flex-direction:column}
+  #stageCol{flex:none; overflow:visible; padding:12px}
+  #side{flex:none; min-width:0; max-width:none; min-height:440px; border-left:0; border-top:1px solid var(--line)}
+  #tabs{flex-wrap:wrap}
+  #tabs button{padding:10px 12px}
+  #transport{gap:6px; flex-wrap:wrap}
+  #scrub{min-width:60px}
+  #formatControl .format-row select{flex:1 1 210px}
+  #top > *{min-width:0;max-width:100%;overflow-wrap:anywhere}
+  #chatInput{min-width:0}
+  #scrub{width:80px}
+  .production-summary{display:inline-block}
+}
+
+/* ---------- 改片面板（原「指挥」） ----------
+ * 形态从"通用聊天框"收窄成"改片单"：只有输入、示例、历史。
+ * 新建回首页、发布去发布台，这里不再提供，避免三个入口做同一件事。
+ *
+ * 排版按"一件事一块"组织：标题行 → 输入 → 示例 → 历史。
+ * 每块之间靠间距分隔，不靠边框和背景色堆叠。 */
+.edit-head{display:flex;align-items:center;gap:10px;padding:2px 0 10px}
+.edit-head strong{font-size:14px;font-weight:600;letter-spacing:-.01em}
+.edit-head #chatState{font-size:var(--fs-xs);color:var(--ink3);margin-left:auto;
+  border:1px solid var(--line);border-radius:999px;padding:2px 9px}
+.edit-head #chatState.busy{color:var(--warn);border-color:rgba(224,179,106,.4)}
+.edit-hint{margin:0 0 12px;font-size:var(--fs-sm);color:var(--ink3);line-height:1.65}
+
+.edit-examples{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px}
+.edit-example{border:1px solid var(--line);background:transparent;color:var(--ink3);
+  border-radius:999px;padding:4px 11px;font-size:var(--fs-xs);cursor:pointer;line-height:1.5;
+  transition:border-color .12s ease,color .12s ease}
+.edit-example:hover{border-color:var(--line-strong);color:var(--ink2)}
+
+.edit-actions{display:flex;gap:8px;margin:0 0 12px}
+.edit-actions button{border:1px solid var(--line);background:transparent;color:var(--ink2);
+  border-radius:var(--r-sm);padding:6px 12px;font-size:var(--fs-sm);cursor:pointer}
+.edit-actions button:hover:not(:disabled){border-color:var(--line-strong);color:var(--ink)}
+
+.edit-history{display:flex;flex-direction:column;gap:1px;margin-top:4px;
+  border-top:1px solid var(--line);padding-top:12px}
+.edit-history-item{padding:9px 0;border-bottom:1px solid var(--line)}
+.edit-history-item:last-child{border-bottom:0}
+.edit-history-head{display:flex;gap:8px;font-size:var(--fs-xs);color:var(--ink3)}
+.edit-history-head .clock{font-variant-numeric:tabular-nums}
+.edit-history-text{font-size:var(--fs-sm);margin-top:4px;line-height:1.6;color:var(--ink);overflow-wrap:anywhere}
+.edit-history-files{font-size:var(--fs-xs);color:var(--ink3);margin-top:4px}
+
+#chatInputRow{display:flex;gap:8px;align-items:flex-start;margin:0}
+#chatInputRow textarea{width:100%;flex:1;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--r-md);color:var(--ink);padding:10px 12px;font:inherit;font-size:var(--fs-sm);
+  line-height:1.6;resize:vertical;min-height:88px}
+#chatInputRow textarea::placeholder{color:var(--ink3)}
+#chatInputRow button{flex-shrink:0;align-self:flex-end;height:38px;padding:0 18px;
+  border-radius:var(--r-sm);border:1px solid var(--line-strong);background:var(--panel2);color:var(--ink);
+  font-size:var(--fs-sm);white-space:nowrap}
+#chatInputRow button:hover:not(:disabled){background:var(--line);border-color:var(--accent2)}
+.edit-redo{margin:0 8px 12px;display:flex;flex-direction:column;gap:6px}
+.edit-redo #chatNew{width:100%;text-align:left;border:1px dashed var(--line);background:transparent;color:var(--ink2);
+  border-radius:8px;padding:7px 10px;font-size:11.5px;cursor:pointer}
+.edit-redo #chatNew:hover:not(:disabled){border-color:var(--accent2);color:var(--ink)}
+.edit-redo #chatNew:disabled{opacity:.45;cursor:not-allowed}
+.edit-redo #modes{margin-top:2px}
+.edit-redo #modeHint{margin:0}
+
+/* The preview is the editor's focus; configuration follows the media. */
+#projectOverview{background:transparent;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:0 0 16px}
+#projectHeadline{font-size:16px;font-weight:500;letter-spacing:-.3px}
+#projectSteps{margin:14px 0}
+#projectNext{background:var(--panel)}
+#formatControl{order:5;background:transparent;border-color:var(--line)}
+#productionPanel{order:6;background:transparent}
+#productionPanel summary{padding:13px 14px}
+#frameWrap{border-radius:12px;box-shadow:0 3px 12px #2525200d}
+#transport{gap:12px;padding:0 2px}
+#play.icon{background:var(--ink);color:#fff;border-color:var(--ink);height:34px;border-radius:7px}
+#keys{line-height:1.9;color:var(--ink3)}
+#chapters{gap:6px}.chapt{padding:4px 9px}.chapt.on{background:var(--ink);border-color:var(--ink)}
+#tabs{padding:0 10px;gap:3px}#tabs button{font-size:12px;padding:18px 11px}
+.tab{padding:24px}.line{padding:7px 8px}.sec{margin-bottom:24px}.sec h3{margin-bottom:10px}
+.line .tt{font-size:14px;line-height:1.85}
+.edit-head strong{font-size:18px;font-weight:500}.edit-hint{line-height:1.9}
+#chatInputRow textarea{min-height:130px;background:var(--bg);font-size:13px}
+#chatInputRow button{background:var(--ink);border-color:var(--ink);color:#fff;width:auto;max-width:140px;height:auto;min-height:38px;white-space:normal}
+.edit-example{color:var(--ink2);padding:6px 11px}
+@media(max-width:1050px){
+  body:not(.workspace-page){overflow:auto;height:auto;min-height:100%}
+  body:not(.workspace-page)>main{flex-direction:column}
+  #stageCol{flex:none;overflow:visible}
+  #side{flex:none;min-width:0;max-width:none;min-height:540px;border-left:0;border-top:1px solid var(--line)}
+  .tab{overflow:visible}
+}
+@media(max-width:600px){
+  #top{padding:12px 16px;gap:9px}.brand{flex-basis:100%}.brand span{overflow-wrap:anywhere}
+  #chips{gap:5px}.chip{font-size:10px;padding:3px 7px}#stageCol{padding:16px}
+  #top #modelLink{font-size:10px!important;max-width:100%;overflow-wrap:anywhere}
+  #top button{font-size:11px;padding:6px 9px}.tab{padding:18px 16px}#tabs{gap:0;padding:0 6px}#tabs button{padding:14px 10px}
+  #transport{gap:7px}.line .tt{font-size:13px}.line .cell{white-space:normal}
+  #chatInputRow{flex-direction:column}#chatInputRow textarea{flex:auto}#chatInputRow button{max-width:none;align-self:flex-end}
+}

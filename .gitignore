@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Build / rendered output
+dist/
+out/
+
+# Personal projects, drafts, diagnostics, experiments
+projects/
+口播稿/
+demo/
+analysis/
+diagnostics/
+
+# Large local model assets
+models/
+
+# Runtime state and generated media
+schedule.json
+*.mp4
+*.mp3
+*.wav
+*.npy
+*.cpuprofile
+
+# Personal screenshots / root-level media
+/*.png
+/*.mp3
+/*.mp4
+
+# OS / editor
+.DS_Store
+*.log
+__pycache__/
+.venv/
+
+# Debug leftovers
+dbg-tmp.mjs
+
+
+# Credentials / env
+.env
+.env.*
+*.key
+*.pem
+
+# Debug / personal scripts
+.__reddot.mjs
+dbg-tmp.mjs
+*口播稿*.md

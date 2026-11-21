@@ -1,0 +1,1085 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>映序 · 创作空间</title>
+<style>
+:root{--bg:#15181A;--panel:#1D2124;--panel2:#22262A;--line:#31363B;--ink:#D9DEE2;--ink2:#8B959E;--ok:#7BE3A4;--warn:#F0B49B;--accent2:#2F9E5C;--mono:'SF Mono',Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,"PingFang SC","Hiragino Sans GB",system-ui,sans-serif}
+header{padding:22px 28px 8px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{font-size:19px;margin:0}
+header .sub{color:var(--ink2);font-size:12px}
+header .spacer{flex:1}
+header a.setting{color:var(--ink2);text-decoration:none;font-size:12.5px;border:1px solid var(--line);border-radius:9px;padding:5px 11px}
+header a.setting:hover{color:var(--ink);border-color:var(--accent2)}
+header code{font-family:var(--mono);color:var(--ink2)}
+main{padding:14px 28px 60px;display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.card:hover{border-color:var(--accent2)}
+.thumb{position:relative;background:#000;aspect-ratio:16/9}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#555;font-size:12px}
+.thumb .dur{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.7);padding:2px 8px;border-radius:8px;font-family:var(--mono);font-size:11px}
+.meta{padding:12px 14px;display:flex;flex-direction:column;gap:8px;flex:1}
+.name{font-weight:700;font-size:15px}
+.path{font-family:var(--mono);font-size:11px;color:var(--ink2)}
+.files{display:flex;flex-direction:column;gap:4px}
+.files a{color:var(--ink);text-decoration:none;font-size:12px;display:flex;gap:8px;align-items:center}
+.files a:hover{color:var(--ok)}
+.files .tag{font-size:10px;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--ink2)}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:6px}
+.btn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 12px;font-size:12.5px;text-decoration:none}
+.btn.primary{background:var(--accent2);border-color:var(--accent2);color:#08120B;font-weight:700}
+.btn:hover{border-color:var(--accent2)}
+.empty-state{padding:40px 28px;color:var(--ink2)}
+.newbox{margin:14px 28px 4px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;max-width:1000px}
+.newbox h2{margin:0;font-size:17px}
+.newbox-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.newbox-badge{font-size:11px;color:var(--ink2);border:1px solid var(--line);border-radius:999px;padding:2px 9px}
+.newbox .lead{margin:0 0 14px;color:var(--ink2);font-size:13px}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.choice{display:block;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer}
+.choice:hover{border-color:var(--accent2)}
+.choice input{display:none}
+.choice:has(input:checked){border-color:var(--accent2);background:rgba(47,158,92,.10)}
+.choice .big{display:block;font-weight:700;font-size:15px;margin-bottom:4px}
+.choice .sm{display:block;color:var(--ink2);font-size:12.5px;line-height:1.5}
+.newbox textarea{width:100%;min-height:110px;resize:vertical;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:11px 13px;font:inherit;font-size:13px;line-height:1.6}
+.newbox .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.newbox-actions{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.newbox input[type=text]{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit;font-size:13px;width:240px}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--accent2);color:var(--ink);padding:10px 16px;border-radius:10px;font-size:13px;max-width:min(90vw,560px);z-index:99;box-shadow:0 8px 28px rgba(0,0,0,.45)}
+.toast.hidden{display:none}
+.trash-box{margin:22px auto 60px;max-width:1180px;padding:0 20px}
+.trash-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.trash-head h2{font-size:15px;margin:0}
+.trash-total{color:var(--ink2);font-size:12.5px}
+.trash-note{color:var(--ink2);font-size:12.5px;margin:6px 0 12px}
+.trash-note b{color:var(--warn)}
+.trash-item{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:12.5px}
+.trash-item .tname{flex:1;min-width:200px;word-break:break-all;color:var(--ink2)}
+.trash-item .tsize{font-family:var(--mono);font-size:11.5px}
+.btn.danger{border-color:var(--bad);color:var(--bad)}
+.newbox select{max-width:100%;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit;font-size:13px}
+.newbox select:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+.queuehead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.queuehead h2{margin:0}
+.queuehead .spacer{flex:1}
+.queue-config{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2)}
+#discQuery{min-width:240px}
+
+/* 三步指引；只有制作卡在这里保存设置。 */
+.queue-timing{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr);gap:12px;margin:14px 0 10px}
+@media(max-width:820px){.queue-timing{grid-template-columns:1fr}}
+.timing-card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:13px 15px}
+.timing-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.timing-state{font-size:11px;color:var(--ink2);margin-left:auto;border:1px solid var(--line);border-radius:999px;padding:2px 9px}
+.timing-note{margin:0 0 10px;font-size:11.5px;color:var(--ink2);line-height:1.6}
+.timing-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--ink2)}
+.timing-row input[type=time],.timing-row input[type=number]{background:var(--bg);border:1px solid var(--line);
+  border-radius:7px;color:var(--ink);padding:5px 8px;font:inherit;font-size:12px}
+.timing-row input[type=number]{width:56px}
+.timing-unit{color:var(--ink3)}
+.timing-card .queue-actions{margin-top:10px;flex-wrap:wrap}
+.queue-actions{margin-top:0}
+.queue-add{margin-top:6px}
+
+/* 开关：用原生 checkbox 保可访问性，外观自己画。 */
+.switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px}
+.switch input{position:absolute;opacity:0;width:0;height:0}
+.switch-track{width:32px;height:18px;border-radius:999px;background:var(--line);position:relative;transition:background .15s ease;flex-shrink:0}
+.switch-track::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+  background:#8B959E;transition:transform .15s ease,background .15s ease}
+.switch input:checked + .switch-track{background:rgba(47,158,92,.35)}
+.switch input:checked + .switch-track::after{transform:translateX(14px);background:var(--accent2)}
+.switch input:focus-visible + .switch-track{outline:2px solid var(--accent2);outline-offset:2px}
+.switch-label{color:var(--ink)}
+.queue-summary{font-size:12px;color:var(--ink2)}
+.queue-list{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.queue-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel2)}
+.queue-item .qtopic{flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.queue-item .qstate{font-size:11px;padding:1px 7px;border-radius:9px;border:1px solid var(--line);color:var(--ink2);flex-shrink:0}
+.queue-item .qstate.pending{color:var(--accent2);border-color:var(--accent2)}
+.queue-item .qstate.done{color:var(--ok);border-color:var(--ok)}
+.queue-item .qstate.failed{color:var(--bad);border-color:var(--bad)}
+.queue-item .qstate.running{color:var(--warn);border-color:var(--warn)}
+.queue-item button{flex-shrink:0}
+.queue-item .qpick{flex-shrink:0;width:16px;height:16px;margin:0;accent-color:var(--accent2);cursor:pointer}
+.queue-item .qpick:disabled{cursor:not-allowed;opacity:.4}
+.queue-bulk{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.queue-check{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--ink2);cursor:pointer;user-select:none}
+.queue-check input{margin:0;accent-color:var(--accent2)}
+.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,var(--line))}
+.format-hint{color:var(--ink2);font-size:12px}
+.note{color:var(--ink2);font-size:12.5px;line-height:1.7;margin:12px 0 0}
+.note code{font-family:var(--mono);background:var(--panel2);padding:1px 6px;border-radius:6px}
+/* .hidden 必须放在所有 display 声明之后：.runbar 用了 display:flex，
+   CSS 后写的规则会覆盖前面的 .hidden{display:none}，于是空状态会露出一条绿边。 */
+.hidden{display:none !important}
+.draft-control{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--ink2);margin-top:10px}
+#connectionStatus{margin:10px 28px;color:var(--warn);font-size:12px;white-space:pre-wrap}
+#connectionStatus:empty{display:none}
+.runbar{margin:12px 28px 0;padding:12px 18px;border-radius:12px;background:var(--panel);border:1px solid var(--accent2);
+  display:flex;align-items:center;gap:14px;font-size:13px}
+.runbar .dot{width:9px;height:9px;border-radius:50%;background:var(--ok);animation:pulse 1.2s infinite}
+.runbar.warn{border-color:var(--warn)} .runbar.warn .dot{background:var(--warn)}
+@keyframes pulse{0%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}100%{opacity:1;transform:scale(1)}}
+.runbar .m{font-family:var(--mono);color:var(--ink2)}
+.runbar b{color:var(--ok)}
+.card.running{border-color:var(--accent2);box-shadow:0 0 0 1px var(--accent2) inset}
+.card .badge{position:absolute;left:10px;top:10px;background:var(--accent2);color:#08120B;font-size:11px;font-weight:700;
+  padding:3px 9px;border-radius:999px;display:flex;align-items:center;gap:6px}
+.card .badge .d{width:6px;height:6px;border-radius:50%;background:#08120B;animation:pulse 1.2s infinite}
+.thumb{position:relative}
+.howto{margin:10px 28px 0;color:var(--ink2);font-size:12.5px;line-height:1.9}
+.howto b{color:var(--ink)}
+.howto code{font-family:var(--mono);background:var(--panel2);padding:1px 6px;border-radius:6px}
+#newMsg{margin-top:8px;font-size:12.5px;white-space:pre-wrap}
+#newMsg.ok{color:var(--ok)} #newMsg.err{color:#E38B7B} #newMsg.warn{color:var(--warn)}
+.task-status{font-size:12px;line-height:1.7;padding:9px 11px;border:1px solid var(--line);border-radius:8px;white-space:pre-wrap}
+.task-status.error{border-color:#75473e;color:#E38B7B;background:rgba(150,55,35,.10)}
+.size{font-family:var(--mono);font-size:11px;color:var(--ink2)}
+.pub{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.pub-title{font-size:14px;font-weight:700;line-height:1.45}
+.pub-desc{font-size:12px;color:var(--ink2);margin-top:6px;line-height:1.5}
+.pub-alt{font-family:var(--mono);font-size:11px;color:var(--ink2);margin-top:6px}
+.pub-missing{color:var(--warn);font-size:12px}
+.size b{color:var(--ink)}
+.btn.danger{border-color:#5A3A34;color:#E38B7B}
+.btn.danger:hover{border-color:#E38B7B}
+.btn:disabled{opacity:.45;cursor:default}
+@media(max-width:600px){header{padding:16px 14px 8px}.newbox{margin:14px 14px 4px;padding:16px}main{padding:14px;grid-template-columns:minmax(0,1fr)}.steps{grid-template-columns:1fr}.actions{flex-wrap:wrap}.runbar{margin:12px 14px 0;flex-wrap:wrap}}
+</style>
+<link rel="stylesheet" href="/_vh/theme.css">
+<link rel="stylesheet" href="/_vh/index.css">
+<link rel="stylesheet" href="/_vh/discovery-panel.css">
+<script type="module" src="/_vh/workbench-shell.mjs"></script>
+</head>
+<body class="workspace-page home-page" data-page="home">
+<header>
+  <h1>创作空间</h1>
+  <span class="spacer"></span>
+  <a class="setting" href="/publish" id="publishLink" title="发到 B 站：选项目、选分区、投稿">发布台 →</a>
+  <a class="setting" href="/settings" id="modelLink" title="自己选 provider 与模型">模型设置</a>
+</header>
+<section class="creation-intro" aria-labelledby="creationTitle">
+  <h2 id="creationTitle">把文字，讲成影像。</h2>
+  <p>从一篇文章、一个链接，或脑海里的一个想法开始。</p>
+</section>
+<section class="newbox composer" aria-label="新建视频">
+  <div class="newbox-head">
+    <h2>新建视频</h2>
+  </div>
+
+  <div class="steps">
+    <label class="choice">
+      <input type="radio" name="src" value="article" checked>
+      <span class="big">从文章开始</span>
+      <span class="sm">改编已有内容</span>
+    </label>
+    <label class="choice">
+      <input type="radio" name="src" value="topic">
+      <span class="big">从想法开始</span>
+      <span class="sm">先调研，再创作</span>
+    </label>
+  </div>
+
+  <label for="newInput" class="sr-only">文章内容、网页链接或视频选题</label>
+  <textarea id="newInput" placeholder="粘贴文章正文或网页链接，开始你的下一支视频…" aria-describedby="automationHint"></textarea>
+  <div id="pagerHost"></div>
+
+  <div class="composer-options">
+  <div class="row">
+    <label for="newAspectRatio">画面比例</label>
+    <select id="newAspectRatio" aria-describedby="newAspectRatioHint">
+      <option value="16:9" selected>16:9 横屏</option>
+      <option value="9:16">9:16 竖屏</option>
+    </select>
+    <span id="newAspectRatioHint" class="sr-only">横屏 1920×1080，竖屏 1080×1920；之后可在工作台修改。</span>
+  </div>
+  <div class="row">
+    <label for="newDeliveryTarget">交付内容</label>
+    <select id="newDeliveryTarget"><option value="publish-package">视频＋发布文案</option><option value="video">仅视频</option></select>
+  </div>
+  </div>
+  <div class="row newbox-actions">
+    <details class="composer-details composer-settings" id="composerSettings"><summary>创作设置</summary><div class="composer-settings-body">
+    <button class="btn" id="advBtn" type="button" aria-expanded="false" aria-controls="newName">指定项目名</button>
+    <input type="text" id="newName" class="hidden" aria-label="项目名" placeholder="留空自动命名">
+    <label class="draft-control" title="草稿仅存在此浏览器，请勿保存敏感内容"><input id="saveNewDraft" type="checkbox">在此浏览器保存草稿</label>
+    <p class="format-hint">草稿仅保存在当前浏览器，请勿保存敏感内容。</p>
+    <div id="newDraftStatus" class="format-hint" role="status"></div>
+    <p class="note" id="agentState">正在检查模型配置…</p>
+    </div></details>
+    <div class="row">
+      <button class="btn" id="newQueueBtn" type="button">加入待做队列</button>
+      <button class="btn primary" id="newBtn">开始做视频 <span aria-hidden="true">↗</span></button>
+    </div>
+  </div>
+  <p class="format-hint" id="automationHint">直接开始会立即制作，不会自动发布；加入队列只保存，等手动开工或定时生成。<a id="automationEntry" href="#queueBox">设置自动制作与发布 →</a></p>
+  <div id="newMsg" role="status" aria-live="polite"></div>
+</section>
+<section class="library-head" aria-labelledby="libraryTitle">
+  <div><h2 id="libraryTitle">我的作品 <span id="projectCount" class="library-count"></span></h2></div>
+  <label class="project-search"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input id="projectSearch" type="search" aria-label="搜索项目" placeholder="搜索项目…"></label>
+</section>
+<div id="runBar" class="runbar hidden"></div>
+<div id="connectionStatus" role="status" aria-live="polite"></div>
+<main id="list" aria-label="项目列表"><div class="empty-state">读取项目…</div></main>
+<p id="searchEmpty" class="search-empty hidden" role="status">没有匹配的项目，试试其他关键词。</p>
+<details class="newbox" id="queueBox">
+  <summary class="queue-disclosure"><span><strong>下一支视频</strong><small>发现选题、待做队列、自动化</small></span><span id="queueSummary" class="queue-summary"></span><span class="disclosure-arrow" aria-hidden="true">＋</span></summary>
+  <div class="queue-body">
+  <div class="workspace-view-tabs" role="tablist" aria-label="选题工作区">
+    <button type="button" role="tab" id="ideasTab" aria-controls="discoveryPanel" aria-selected="true">发现选题</button>
+    <button type="button" role="tab" id="queueTab" aria-controls="queuePanel" aria-selected="false" tabindex="-1">待做队列 <span id="queueTabCount"></span></button>
+    <button type="button" role="tab" id="automationTab" aria-controls="automationPanel" aria-selected="false" tabindex="-1">自动化</button>
+  </div>
+  <section class="discovery-panel" id="discoveryPanel" role="tabpanel" aria-labelledby="ideasTab">
+    <h2 id="discoveryTitle">发现下一支视频</h2>
+    <p class="discovery-intro">先发现值得问的问题，再为感兴趣的问题找依据。</p>
+    <div class="discovery-controls">
+       <label class="discovery-query" for="discQuery">探索方向<input type="text" id="discQuery" maxlength="1000" placeholder="例如：AI 工具如何影响普通人的工作"></label>
+       <button class="btn primary" id="discBtn" type="button">查找选题</button>
+    </div>
+    <details id="discoverySettings" class="discovery-settings"><summary>查找设置与偏好</summary><div class="discovery-settings-body">
+    <div class="discovery-options">
+       <label for="discMode">查找模式<select id="discMode"><option value="focused">聚焦方向</option><option value="explore">拓展探索</option></select></label>
+       <label for="discCount">每批数量<input type="number" id="discCount" min="1" max="10" value="3"></label>
+       <button class="btn" id="discConfigSave" type="button">保存查找设置</button>
+    </div>
+    <div class="discovery-switches">
+      <label class="queue-config"><input type="checkbox" id="discEnabled"> 自动发现选题</label>
+      <label class="queue-config"><input type="checkbox" id="discAutoQueue"> 自动调查并将有依据的选题入队</label>
+    </div>
+    <p class="format-hint">自动发现使用已保存的方向、模式和数量，默认只提出问题。自动调查与入队是独立开关，开启后才会联网调查，符合条件的选题才入队；是否定时制作由「自动化」页签决定。</p>
+    <div id="discConfigMsg" class="discovery-message" role="status"></div>
+    <section class="discovery-preferences">
+      <button type="button" class="discovery-toggle" id="discPreferencesToggle" aria-expanded="false" aria-controls="discPreferencesEditor">个人偏好与反馈管理 <span id="discFeedbackCount"></span> ＋</button>
+      <div id="discPreferencesEditor" hidden>
+      <label for="discNotes">个人偏好（可编辑，也可清空；不替代逐条反馈）</label>
+      <textarea id="discNotes" maxlength="4000" placeholder="喜欢的内容、想避开的讲法、受众与深度…"></textarea>
+      <div class="topic-buttons"><button class="btn" id="discNotesSave" type="button">保存偏好</button><button class="btn" id="discNotesClear" type="button">清空个人偏好</button><button class="btn" id="discFeedbackClear" type="button">清空全部反馈</button></div>
+      <div id="discFeedbackConfirm" class="topic-receipt" hidden><p>确认清空全部兴趣反馈？选题历史、候选位置和待做队列都会保留。</p><div class="topic-buttons"><button class="btn danger" id="discFeedbackConfirmYes" type="button">确认清空反馈</button><button class="btn" id="discFeedbackConfirmNo" type="button">取消</button></div></div>
+      <p class="format-hint">清空反馈不删除选题历史、不移除已入队的内容，也不会把整份历史重新放回候选。单条可在历史里撤销。</p>
+      <div id="discPreferencesMsg" class="discovery-message" role="status"></div>
+      </div>
+    </section>
+    <p class="format-hint discovery-help">查找先提出具体问题，说明对谁有用、为什么值得问，以及待确认的前提，不预设答案。选中感兴趣的问题后再「调查此题」：检查前提、寻找材料与缺口。材料不足仍保留问题；取得研究线索不等于事实已核实。查找保留已有候选，「换角度」仅生成当前题的一个建议，采用后才替换，不自动记录兴趣反馈。查找不保证覆盖最新事件。</p>
+    </div></details>
+    <div id="discMsg" class="discovery-message" role="status" aria-live="polite"></div>
+    <div id="discActionMsg" class="discovery-message" role="status" aria-live="polite"></div>
+    <div class="queuehead"><h2>候选</h2><span id="discTopicCount" class="format-hint"></span><button class="btn" id="discRefresh" type="button" aria-label="刷新候选与历史">刷新</button></div>
+    <div id="discCandidates" class="discovery-list"></div>
+    <p id="discEmpty" class="format-hint">正在读取候选…</p>
+    <section id="discDetachedSuggestions" hidden><h3>待确认的单条建议</h3><div id="discSuggestionList" class="discovery-list"></div></section>
+    <section class="discovery-history" id="discHistory">
+      <button type="button" class="discovery-toggle" id="discHistoryToggle" aria-expanded="false" aria-controls="discHistoryBody">选题与反馈历史 <span id="discHistoryCount"></span> <span id="discHistoryArrow" aria-hidden="true">＋</span></button>
+      <div id="discHistoryBody" hidden>
+        <form id="discHistorySearchForm" class="history-tools"><input id="discHistoryQuery" type="search" maxlength="1000" aria-label="搜索选题与反馈历史" placeholder="搜索题目、问题或反馈备注"><select id="discHistoryFilter" aria-label="筛选历史状态"><option value="all">全部历史</option><option value="queued">曾加入队列</option><option value="seen">已经看过</option><option value="dismissed">不感兴趣</option><option value="archived">收起与替换</option><option value="duplicate">重复选题</option></select><button class="btn" type="submit">筛选</button></form>
+        <p id="discHistoryMsg" class="discovery-message" role="status"></p>
+        <div id="discHistoryList" class="discovery-list"></div>
+        <div class="history-pages"><button class="btn" id="discHistoryPrev" type="button" disabled>上一页</button><span id="discHistoryPageStatus" role="status"></span><button class="btn" id="discHistoryNext" type="button" disabled>下一页</button></div>
+      </div>
+    </section>
+  </section>
+  <section id="automationPanel" role="tabpanel" aria-labelledby="automationTab" hidden>
+  <h2>自动做片与自动投稿</h2>
+  <p class="format-hint">只想自动做片，设到第 2 步即可。发布必须在发布台另行确认。</p>
+  <div class="queue-timing">
+    <div class="timing-card">
+      <div class="timing-head"><strong class="switch-label">1. 加选题</strong></div>
+      <p class="timing-note" id="automationQueueStatus">正在读取待做队列…</p>
+      <button class="btn" id="automationQueueLink" type="button">去待做队列 →</button>
+    </div>
+    <div class="timing-card">
+      <div class="timing-head">
+        <label class="switch">
+          <input type="checkbox" id="buildEnabled">
+          <span class="switch-track"></span>
+          <span class="switch-label">2. 定时生成</span>
+        </label>
+        <span id="buildState" class="timing-state">关</span>
+      </div>
+      <label class="timing-row">制作方式
+        <select id="buildMode">
+          <option value="window">在时段内取队列</option>
+          <option value="daily" disabled>每天定点启动一支</option>
+        </select>
+      </label>
+      <p class="timing-note" id="buildModeHint"></p>
+      <div class="timing-row">
+        <input type="time" id="buildFrom" aria-label="定时生成开始时间" value="09:00">
+        <div id="buildWindow" class="timing-row">
+          <span>到</span>
+          <input type="time" id="buildTo" aria-label="定时生成结束时间" value="23:00">
+          <span class="timing-unit">每天最多</span>
+          <input type="number" id="buildLimit" aria-label="每天最多生成支数" min="1" max="20" value="3">
+          <span class="timing-unit">支</span>
+        </div>
+      </div>
+      <div class="row queue-actions">
+        <button class="btn" id="timingSave" type="button">保存制作设置</button>
+        <span id="timingMsg" class="format-hint" role="status"></span>
+      </div>
+    </div>
+
+    <div class="timing-card">
+      <div class="timing-head">
+        <strong class="switch-label">3. 自动发布</strong>
+      </div>
+      <p class="timing-note">想做完就投，选「成片后自动投稿」和「当前及今后的制作队列」。也可以每天到点只投一支。</p>
+      <a class="btn" id="automationPublishLink" href="/publish#publishSchedule">去设置发布 →</a>
+    </div>
+  </div>
+  </section>
+  <section id="queuePanel" role="tabpanel" aria-labelledby="queueTab" hidden>
+  <h2>待做队列</h2>
+  <p class="format-hint">加入只排队；可点「去做」立即制作，或在「自动化」里启用定时生成。</p>
+  <div class="row queue-add">
+    <input type="text" id="queueTopic" aria-label="新选题" placeholder="加一个选题：一句话写清对象和问题">
+    <button class="btn" id="queueAdd" type="button">加入队列</button>
+  </div>
+  <div class="row queue-bulk" id="queueBulk" hidden>
+    <label class="queue-check">
+      <input type="checkbox" id="queueSelectAll">
+      <span>全选可移除项</span>
+    </label>
+    <span id="queueSelected" class="format-hint" role="status"></span>
+    <span style="flex:1"></span>
+    <button class="btn danger" id="queueRemoveSelected" type="button" disabled>移除选中</button>
+  </div>
+  <div id="queueList" class="queue-list"></div>
+  <div id="queueMsg" class="format-hint" role="status"></div>
+  </section>
+  </div>
+</details>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+<section id="trashBox" class="trash-box hidden">
+  <div class="trash-head">
+    <h2>回收站</h2>
+    <span id="trashTotal" class="trash-total"></span>
+    <span style="flex:1"></span>
+    <button class="btn" id="emptyTrash" type="button">清空回收站</button>
+  </div>
+  <p class="trash-note">项目原稿与成片保留在此，<b>仍占用磁盘空间</b>。清空后无法恢复。</p>
+  <div id="trashList"></div>
+</section>
+<script type="module">
+import { attachPagedInput } from '/_vh/paged-input.mjs';
+import { attachDraft } from '/_vh/draft-input.mjs';
+import { requestJSON } from '/_vh/http.mjs';
+import { visiblePolling } from '/_vh/visible-polling.mjs';
+import { stageLabel } from '/_vh/project-progress.mjs';
+import { taskNotices } from '/_vh/task-notices.mjs';
+import { repairRecovery, resumeWithRecovery } from '/_vh/repair-recovery.mjs';
+import { attachDiscoveryPanel } from '/_vh/discovery-panel.mjs';
+import { createQueueChanges } from '/_vh/queue-changes.mjs';
+import { attachViewTabs } from '/_vh/view-tabs.mjs';
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mb = n => (n / 1048576).toFixed(1) + 'MB';
+const when = t => new Date(t).toLocaleString('zh-CN');
+let listSignature = '';
+const retrying = new Set();
+const taskNames = { idle:'待制作', starting:'准备制作', running:'制作中', cancelling:'正在停止', paused:'已暂停 · 可继续', failed:'制作失败', interrupted:'制作中断', incomplete:'尚未完成', cancelled:'已停止', completed:'制作结束 · 待查看' };
+
+/* 卡片签名：只包含"必须重建 DOM"的字段。
+ * ⚠ 性能：旧实现用 JSON.stringify(整个 project) 做签名，其中 task.steps / task.last 每次轮询都变，
+ *   于是任务一运行，整页卡片每 2 秒被销毁重建一次：<img> 重新创建、缩略图重新解码、
+ *   输入框所在文档的结构不断变动 —— 用户感受到的就是"输入很多文字时非常卡"。 */
+function cardSignature(p) {
+  const t = p.task || {};
+  return JSON.stringify([p.rel, p.name, p.dur,
+    p.videos.map(v => [v.file, v.size, Math.round(v.mtime)]),
+    p.publish, p.publishStatus, t.status, t.error, t.deliverableStale, t.canResume, t.resumeNotice, t.pausedReason,
+    /* warnings 与 delivered 会影响卡片文字与配色，签名漏掉就会在轮询里不刷新。 */
+    t.warnings, t.delivered,
+    t.running, t.cancelling, t.orphanRunning, t.mode, t.stage, t.taskId, t.attemptId, t.repairRecovery, t.automationSummary]);}
+/* 只在内容真的变了时更新的少量文字（步数、体积），不重建节点。 */
+function cardVolatile(p) {
+  const t = p.task || {};
+  return JSON.stringify([t.steps, t.last, Math.round(p.size / 1048576), Math.round(p.cacheBytes / 1048576)]);
+}
+const cards = new Map();   // rel → { el, sig, vol, sizeEl, statusEl }
+function filterProjects() {
+  const query = $('#projectSearch').value.trim().toLocaleLowerCase();
+  let visible = 0;
+  for (const card of cards.values()) {
+    const match = !query || card.searchText.includes(query);
+    card.el.hidden = !match;
+    if (match) visible++;
+  }
+  $('#projectCount').textContent = cards.size ? String(cards.size).padStart(2, '0') : '';
+  $('#searchEmpty').classList.toggle('hidden', !cards.size || visible > 0);
+}
+$('#projectSearch').addEventListener('input', filterProjects);
+
+/* 轻提示：明确告诉用户"空间还没释放"这类容易被误解的结果。
+ * 用 alert 会打断操作，用 toast 更适合"操作成功但有后果要说"。 */
+let toastTimer = null;
+function showToast(text, ms = 6000) {
+  const el = $('#toast');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), ms);
+}
+
+/* 回收站：让"删了但空间没释放"这件事可见，并给出真正的释放入口。 */
+async function loadTrash() {
+  const box = $('#trashBox');
+  if (!box) return;
+  let data;
+  try { data = await (await fetch('/_api/trash')).json(); } catch { return; }
+  const items = data.items || [];
+  if (!items.length) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  $('#trashTotal').textContent = `共 ${items.length} 项，占用 ${mb(data.totalBytes || 0)}`;
+  $('#trashList').innerHTML = items.map(it => `
+    <div class="trash-item">
+      <span class="tname">${esc(it.name)}</span>
+      <span class="tsize">${mb(it.bytes)}</span>
+      <span class="tsize">${when(it.deletedAt)}</span>
+      <button class="btn" data-restore="${esc(it.name)}" type="button">恢复</button>
+      <button class="btn danger" data-purge="${esc(it.name)}" type="button">彻底删除</button>
+    </div>`).join('');
+
+  for (const b of document.querySelectorAll('[data-restore]')) {
+    b.onclick = async () => {
+      b.disabled = true;
+      const r = await (await fetch('/_api/trash', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'restore', name: b.dataset.restore }) })).json();
+      if (r.error) { alert('恢复失败：' + r.error); b.disabled = false; return; }
+      showToast('已恢复到 projects/');
+      load(); loadTrash();
+    };
+  }
+  for (const b of document.querySelectorAll('[data-purge]')) {
+    b.onclick = async () => {
+      if (!confirm('彻底删除「' + b.dataset.purge + '」？\n成片、脚本、原始素材与证据都会被删除，无法恢复。')) return;
+      b.disabled = true;
+      const r = await (await fetch('/_api/trash', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'purge', name: b.dataset.purge, confirmed: true }) })).json();
+      if (r.error) { alert('删除失败：' + r.error); b.disabled = false; return; }
+      showToast('已彻底删除，空间已释放。');
+      loadTrash();
+    };
+  }
+
+  const empty = $('#emptyTrash');
+  if (empty) empty.onclick = async () => {
+    if (!confirm(`彻底删除以下 ${items.length} 项（约 ${mb(data.totalBytes || 0)}）？\n${items.map(it => '· ' + it.name).join('\n')}\n成片、脚本、原始素材与证据都会被删除，无法恢复。`)) return;
+    empty.disabled = true;
+    const r = await (await fetch('/_api/trash', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'empty', confirmed: true, expectedNames: items.map(it => it.name) }) })).json();
+    empty.disabled = false;
+    if (r.error) { alert('清空失败：' + r.error); return; }
+    showToast(`已删除确认的项目，约释放 ${mb(data.totalBytes || 0)}。`);
+    loadTrash();
+  };
+}
+
+function buildCard(p) {
+  const voice = p.videos.find(v => v.file.includes('voice'));
+  const task = p.task || { status: 'idle' };
+  /* 已交付但收尾异常：产物齐全，不该用"制作失败"的红字和标签。 */
+  const settledDelivery = task.delivered && task.status === 'failed' && task.error?.kind === 'execution';
+  const failed = ['failed','interrupted','incomplete'].includes(task.status) && !settledDelivery;
+  const notices = taskNotices(task);
+  const recovery = repairRecovery(task);
+  const projectPath = '/' + p.rel.split('/').map(encodeURIComponent).join('/');
+  const still = projectPath + '/out/stills/s-01.jpg';
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML =
+    `<a class="thumb" href="/?p=${encodeURIComponent(p.rel)}">` +
+      `<img src="${esc(still)}" alt="${esc(p.name)} · 画面预览" loading="lazy" decoding="async" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` +
+      `<div class="empty" style="display:none"><span aria-hidden="true">▷</span> 等待第一帧画面</div>` +
+      (p.dur ? `<div class="dur">${p.dur.toFixed(1)}s</div>` : '') +
+    `</a>` +
+    `<div class="meta">` +
+      `<div class="task-status${failed || (!settledDelivery && notices.reason && task.error) ? ' error' : ''}" role="status"><b>${esc(settledDelivery ? '制作结束 · 已交付（收尾异常）' : taskNames[task.status] || task.status)}</b>` +
+        (task.channelMismatch ? '\n⚠ 你已在设置页换成 ' + esc(task.selectedProvider) + '，但还没重新开始执行。点「继续任务」后才会用新渠道。' : '') +
+        (notices.reason ? '\n' + esc(notices.reason) : '') +
+        (notices.warnings.length ? '\n⚠ ' + notices.warnings.map(esc).join('\n⚠ ') : '') +
+        (recovery.blocked ? '\n' + esc(recovery.reason + recovery.detail) : '') + '</div>' +
+      (notices.deliverable ? `<div class="pub-missing" role="status">${esc(notices.deliverable)}</div>` : '') +
+      (p.publishStatus?.required && !p.publishStatus.ok ? `<div class="pub-missing">发布文案待补齐 / 更新</div>` : '') +
+      `<div class="name">${esc(p.name)}</div>` +
+      `<div class="actions">` +
+        `<a class="btn primary" href="/?p=${encodeURIComponent(p.rel)}">打开项目 ↗</a>` +
+        (task.canResume || recovery.blocked ? `<button class="btn" data-retry="${esc(p.rel)}" title="${esc(recovery.reason || task.resumeNotice || '')}" ${retrying.has(p.rel) || recovery.blocked && !recovery.canExtend || task.running || task.cancelling || task.orphanRunning || task.productionBusy ? 'disabled' : ''}>${esc(recovery.blocked ? recovery.label : '继续任务')}</button>` : '') +
+        (task.running || task.cancelling
+          ? `<button class="btn danger" data-cancel="${esc(p.rel)}" ${task.cancelling ? 'disabled' : ''}>${task.cancelling ? '正在停止…' : '停止'}</button>` : '') +
+        (voice ? `<a class="btn" href="${projectPath}/out/${encodeURIComponent(voice.file)}">查看成片</a>` : '') +
+      `</div>` +
+      `<details class="project-details"><summary>文件与管理</summary>` +
+      (task.provider ? `<div class="path">上次使用渠道：${esc(task.provider)}</div>` : '') +
+      `<div class="path">${esc(p.rel)}　<span class="size">占地 <b>${(p.size/1048576).toFixed(0)}MB</b>` +
+      (p.cacheBytes > 1048576 ? `（其中渲染缓存 ${(p.cacheBytes/1048576).toFixed(0)}MB）` : '') + `</span></div>` +
+      `<div class="files">` + (p.videos.length ? p.videos.map(v =>
+          `<a href="${projectPath}/out/${encodeURIComponent(v.file)}" download>` +
+          `${v.file.includes('voice') ? '🔊' : '🔇'} ${esc(v.file)} <span class="tag">${mb(v.size)}</span>` +
+          `<span class="path">${when(v.mtime)}</span></a>`).join('')
+        : '<span class="path">还没有成片</span>') + `</div>` +
+      (p.publishStatus ? `<div class="pub-missing">发布文案：${esc(!p.publishStatus.required ? '可选（仅视频交付）' : !p.publishStatus.ok ? '待补齐 / 更新' : p.publishStatus.revision?.state === 'current' ? '已关联当前稿' : '待核对版本')}</div>` : '') +
+      (p.publish && (p.publish.main || p.publish.descHead)
+        ? `<div class="pub"><div class="pub-title">${esc(p.publish.main || '（还没写标题）')}</div>` +
+          (p.publish.descHead ? `<div class="pub-desc">${esc(p.publish.descHead)}</div>` : '') + `</div>` : '') +
+      `<div class="project-secondary">` +
+        `<a class="btn" href="/?p=${encodeURIComponent(p.rel)}&tab=publish">发布文案</a>` +
+        `<a class="btn" href="${projectPath}/脚本.md">脚本</a>` +
+        (p.cacheBytes > 1048576 ? `<button class="btn" data-clean="${esc(p.rel)}">清缓存</button>` : '') +
+        `<button class="btn danger" data-remove="${esc(p.rel)}">删除</button>` +
+      `</div></details>` +
+    `</div>`;
+  return { el, task, searchText: [p.name, p.rel, p.publish?.main || ''].join(' ').toLocaleLowerCase(), sig: cardSignature(p), vol: cardVolatile(p), sizeEl: el.querySelector('.size'), statusEl: el.querySelector('.task-status') };
+}
+/* 体积/缓存文字原地更新，不碰 <img>。 */
+function updateCardVolatile(card, p) {
+  const sizeEl = card.sizeEl;
+  if (sizeEl) sizeEl.innerHTML = `占地 <b>${(p.size/1048576).toFixed(0)}MB</b>` +
+    (p.cacheBytes > 1048576 ? `（其中渲染缓存 ${(p.cacheBytes/1048576).toFixed(0)}MB）` : '');
+  card.vol = cardVolatile(p);
+}
+
+function load() { return projectsPolling.refresh(); }
+async function loadProjects() {
+  const j = await requestJSON('/_api/projects', { cache: 'no-store' });
+  if (!Array.isArray(j.projects)) throw new Error('项目列表返回不完整');
+  $('#connectionStatus').textContent = '';
+  const box = $('#list');
+  if (!j.projects.length) {
+    // 初次加载的占位文案也要被替换；旧条件把它当成"已渲染"，于是永远停在「读取项目…」。
+    const empty = box.querySelector('.empty-state');
+    const placeholder = empty && /读取项目|读取失败/.test(empty.textContent);
+    if (cards.size || !empty || placeholder) {
+      box.innerHTML = '<div class="empty-state">第一支作品，从上面的一个想法开始。<br><small>创建后，制作进度与成片会显示在这里。</small></div>';
+      cards.clear();
+    }
+    paintRun([]);
+    filterProjects();
+    return [];
+  }
+  const seen = new Set();
+  for (const p of j.projects) {
+    seen.add(p.rel);
+    const cur = cards.get(p.rel);
+    const sig = cardSignature(p);
+    if (cur && cur.sig === sig) {
+      cur.task = p.task;
+      // 结构没变：只改体积文字，缩略图与输入框完全不动。
+      if (cur.vol !== cardVolatile(p)) updateCardVolatile(cur, p);
+      continue;
+    }
+    const next = buildCard(p);
+    if (cur) {
+      // 替换节点：旧节点必须真的从文档里移除，
+      // 否则 Map 与 DOM 会对不上（重复卡片、按钮点的是已废弃的旧节点）。
+      cur.el.replaceWith(next.el);
+      cur.el.remove();
+    }
+    cards.set(p.rel, next);
+  }
+  for (const [rel, cur] of [...cards]) {
+    if (!seen.has(rel)) { cur.el.remove(); cards.delete(rel); }
+  }
+  // 顺序变化时只调整排列，不重建节点。
+  const want = j.projects.map(p => p.rel);
+  want.forEach((rel, i) => {
+    const card = cards.get(rel);
+    if (card && box.children[i] !== card.el) box.insertBefore(card.el, box.children[i] || null);
+  });
+  const empty = box.querySelector('.empty-state');
+  if (empty) empty.remove();
+  paintRun(j.projects);
+  filterProjects();
+  return j.projects;
+}
+async function refreshAgentState() {
+  try {
+    const j = await (await fetch('/_api/agent-ready')).json();
+    $('#agentState').innerHTML = j.ready
+      ? '状态：<b>已配置模型渠道</b>（' + esc(j.provider) + '）。额度和网络将在实际调用时验证，任务进度与失败原因会显示在项目卡片上。'
+      : '状态：<b>尚未配置模型渠道</b>。可以先保存项目与输入；配置本机凭证后，在项目卡片上手动重试。不要把密钥发到聊天或文章里。';
+    $('#agentState').dataset.ready = j.ready ? '1' : '';
+  } catch {}
+  try {
+    const s = await (await fetch('/_api/providers')).json();
+    if (s.current) { $('#modelLink').textContent = '模型设置'; $('#modelLink').title = s.current.provider + ' / ' + s.current.model; }
+  } catch {}
+}
+$('#advBtn').onclick = () => { const hidden = $('#newName').classList.toggle('hidden'); $('#advBtn').setAttribute('aria-expanded', String(!hidden)); if (!hidden) $('#newName').focus(); };
+function autoName(input, mode) {
+  // 用户不用想项目名：从内容里取前 12 个有意义的字符，或按日期
+  const t = (input || '').replace(/https?:\/\/\S+/g, ' ').replace(/[^\w\u4e00-\u9fff]+/g, '').slice(0, 12);
+  const d = new Date().toISOString().slice(5, 10).replace('-', '');
+  return (t ? t : (mode === 'topic' ? '选题' : '文章')) + '-' + d;
+}
+/* 大文本输入：全文 > 4000 字时自动分页，textarea 只渲染当前页。
+   否则每敲一个字都要重排全部内容（60k 字 / 4000 行实测每次按键 ~39ms，肉眼就是卡）。 */
+let newDraft = null;
+const newInput = attachPagedInput($('#newInput'), { pagerHost: $('#pagerHost'), onChange: () => newDraft?.schedule() });
+newDraft = attachDraft({ key: 'vh:draft:new:v1', input: newInput, checkbox: $('#saveNewDraft'), status: $('#newDraftStatus'),
+  getMeta: () => ({ mode: document.querySelector('input[name=src]:checked').value, name: $('#newName').value,
+    aspectRatio: $('#newAspectRatio').value, deliveryTarget: $('#newDeliveryTarget').value }),
+  restoreMeta: meta => {
+    if (['article', 'topic'].includes(meta.mode)) document.querySelector(`input[name=src][value="${meta.mode}"]`).checked = true;
+    if (typeof meta.name === 'string') $('#newName').value = meta.name;
+    if (['16:9', '9:16'].includes(meta.aspectRatio)) $('#newAspectRatio').value = meta.aspectRatio;
+    if (['video', 'publish-package'].includes(meta.deliveryTarget)) $('#newDeliveryTarget').value = meta.deliveryTarget;
+  } });
+for (const control of document.querySelectorAll('input[name=src],#newName,#newAspectRatio,#newDeliveryTarget')) control.addEventListener('input', () => newDraft.schedule());
+function paintInputHint() {
+  $('#newInput').placeholder = document.querySelector('input[name=src]:checked').value === 'topic'
+    ? '你想讲什么？例如：本地大模型为什么越来越实用了。'
+    : '粘贴文章正文或网页链接，开始你的下一支视频…';
+}
+for (const control of document.querySelectorAll('input[name=src]')) control.addEventListener('change', paintInputHint);
+paintInputHint();
+$('#newBtn').onclick = async () => {
+  const mode = document.querySelector('input[name=src]:checked').value;
+  const input = newInput.getValue();
+  const aspectRatio = $('#newAspectRatio').value;
+  const deliveryTarget = $('#newDeliveryTarget').value;
+  const name = $('#newName').value.trim() || autoName(input, mode);
+  if (!input.trim() && !confirm('没填材料也可以先建空项目（之后可以再补）。要继续吗？')) return;
+  const msg = $('#newMsg');
+  if (!name) { msg.className = 'err'; msg.textContent = '先写个项目名。'; return; }
+  $('#newBtn').disabled = true; msg.className = ''; msg.textContent = '创建中…';
+  $('#newQueueBtn').disabled = true;
+  try {
+    const r = await requestJSON('/_api/new', { method: 'POST', timeoutMs: 60000, headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, mode, input, aspectRatio, deliveryTarget }) });
+    if (!r.ok || typeof r.rel !== 'string') throw new Error('服务器没有确认项目创建成功；请先查看项目列表');
+    if (r.error) { msg.className = 'err'; msg.textContent = r.error; }
+    else {
+      msg.className = r.started ? 'warn' : r.task?.error ? 'err' : 'warn';
+      msg.textContent = r.started ? '任务已提交，正在启动。提交成功不代表制作完成；下方卡片会持续显示进度或失败原因。'
+        : r.needsInput ? '项目已创建，尚未提供制作材料。请进入工作台补充。' : (r.task?.error?.message || '项目已保存，任务尚未启动。');
+      const link = document.createElement('a'); link.href = '/?p=' + encodeURIComponent(r.rel) + '&tab=chat';
+      link.className = 'btn'; link.textContent = '查看这次任务'; msg.append(document.createElement('br'), link);
+      if (newInput.getValue() === input && $('#newDeliveryTarget').value === deliveryTarget && $('#newAspectRatio').value === aspectRatio && document.querySelector('input[name=src]:checked').value === mode) {
+        newInput.setValue(''); newDraft.clear();
+      }
+      if ($('#newName').value.trim() === name) $('#newName').value = '';
+      load().catch(showConnectionError);
+    }
+  } catch (e) { msg.className = 'err'; msg.textContent = '未确认提交成功：' + e.message + '。输入已保留，请先核对下方项目列表，未自动重复创建。'; }
+  finally { $('#newBtn').disabled = false; $('#newQueueBtn').disabled = false; }
+};
+$('#newQueueBtn').onclick = async () => {
+  const msg = $('#newMsg'), input = newInput.getValue(), mode = document.querySelector('input[name=src]:checked').value;
+  const aspectRatio = $('#newAspectRatio').value, deliveryTarget = $('#newDeliveryTarget').value;
+  const projectName = $('#newName').value.trim(), name = projectName || autoName(input, mode);
+  if (!input.trim() || !name) { msg.className = 'err'; msg.textContent = '请先填写文章、链接或选题。'; return; }
+  $('#newBtn').disabled = $('#newQueueBtn').disabled = true;
+  msg.className = ''; msg.textContent = '正在加入队列…';
+  try {
+    const result = await requestJSON('/_api/schedule/enqueue', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, mode, input, aspectRatio, deliveryTarget }) });
+    if (!result.ok || !result.id) throw new Error('服务没有确认入队；若刚更新，请在空闲时重启工作台');
+    if (newInput.getValue() === input && $('#newDeliveryTarget').value === deliveryTarget && $('#newAspectRatio').value === aspectRatio &&
+        document.querySelector('input[name=src]:checked').value === mode && $('#newName').value.trim() === projectName) {
+      newInput.setValue(''); newDraft.clear(); $('#newName').value = '';
+    }
+    msg.className = 'ok'; msg.textContent = '已加入待做队列，这一步不会调用模型。';
+    const link = document.createElement('button'); link.type = 'button'; link.className = 'btn'; link.textContent = '查看待做队列';
+    link.onclick = () => { $('#queueBox').open = true; sectionTabs.select('queuePanel', { focus: true }); $('#queueBox').scrollIntoView(); };
+    msg.append(document.createElement('br'), link);
+    void queueLoad();
+  } catch (error) {
+    msg.className = 'err'; msg.textContent = '未确认入队：' + error.message + '。输入已保留，请先核对待做队列。';
+  } finally { $('#newBtn').disabled = $('#newQueueBtn').disabled = false; }
+};
+document.addEventListener('click', async (e) => {
+  const retry = e.target.closest('[data-retry]');
+  if (retry) {
+    const rel = retry.dataset.retry;
+    if (retry.disabled || retrying.has(rel)) return;
+    const label = retry.textContent;
+    retrying.add(rel); retry.disabled = true; retry.textContent = '提交重试…';
+    try {
+      const result = await resumeWithRecovery({ getTask: () => cards.get(rel)?.task, confirmImpl: window.confirm.bind(window),
+        request: async options => {
+          const response = await fetch('/_api/chat/resume?p=' + encodeURIComponent(rel), options), result = await response.json();
+          if (!response.ok || result.error) throw new Error(result.error || '原任务未能继续');
+          return result;
+        } });
+      if (!result) return;
+      // 强制重建这一张卡片：任务状态变了（starting/running），签名会变，load() 会替换节点。
+      // ⚠ 不能 cards.clear()：那会丢掉 Map 与 DOM 的对应关系，
+      // 旧节点留在页面上，后续 load() 会再造一份，出现重复卡片与点不动的旧按钮。
+      const card = cards.get(rel);
+      if (card) { card.sig = ''; }
+      listSignature = '';
+      await load();
+    } catch (error) { alert(error.message); }
+    finally {
+      retrying.delete(rel); retry.textContent = label;
+      const current = cards.get(rel), task = current?.task || {}, recovery = repairRecovery(task);
+      const button = current?.el.querySelector('[data-retry]');
+      if (button) button.disabled = !!(task.running || task.cancelling || task.orphanRunning || task.productionBusy || recovery.blocked && !recovery.canExtend);
+    }
+    return;
+  }
+  const cancel = e.target.closest('[data-cancel]');
+  if (cancel) {
+    const rel = cancel.dataset.cancel;
+    if (cancel.disabled) return;
+    if (!confirm('停止「' + rel + '」的制作？\n\n已经产出的文件不会回滚；检查点会保留，之后可以继续。')) return;
+    const label = cancel.textContent;
+    cancel.disabled = true;
+    cancel.textContent = '正在停止…';
+    try {
+      const r = await requestJSON('/_api/chat/cancel?p=' + encodeURIComponent(rel), { method: 'POST', timeoutMs: 30000 });
+      if (r.productionBusy && !r.cancelling) throw new Error(r.error || '命令行制作仍在执行，请回到原终端停止');
+      if (r.cancelling) showToast('正在停止，等待进程退出…');
+      else if (r.cancelled) showToast('已停止。已产出的文件保留。');
+      else showToast('任务已经不在运行。');
+      listSignature = '';
+      load().catch(showConnectionError);
+    } catch (error) {
+      alert('停止失败：' + error.message + '\n\n如果进程仍在跑，可以在项目页「告诉它改哪里」里再点一次停止。');
+      cancel.textContent = label;
+    } finally { cancel.disabled = false; }
+    return;
+  }
+  const clean = e.target.closest('[data-clean]');
+  const remove = e.target.closest('[data-remove]');
+  if (clean) {
+    if (!confirm('清理 ' + clean.dataset.clean + ' 的渲染缓存？\n（删掉 frames 与 seg；成片、静帧、脚本都保留。之后改画面会整片重渲一次）')) return;
+    clean.disabled = true; clean.textContent = '清理中…';
+    try {
+      const r = await requestJSON('/_api/clean?p=' + encodeURIComponent(clean.dataset.clean), { method: 'POST' });
+      if (!r.ok) throw new Error('服务器未确认清理结果');
+      showToast('已清理：' + (r.freed?.length ? r.freed.join('、') : '没有可清理的缓存'));
+      const card = cards.get(clean.dataset.clean); if (card) card.sig = '';
+      load().catch(showConnectionError);
+    } catch (e) { showToast('清理未确认成功：' + e.message); }
+    finally { clean.disabled = false; clean.textContent = '清缓存'; }
+  }
+  if (remove) {
+    const rel = remove.dataset.remove;
+    /* 旧实现用 prompt 让用户"输入 1 或 2"：选项藏在一句话里，极易选错，
+     * 而选错的结果是空间没释放、用户以为删干净了。改成明确的二次确认。 */
+    if (!confirm('删除项目「' + rel + '」？\n\n将先清渲染帧、分段和 TTS 等可再生缓存，再把项目移入回收站。成片、脚本、素材和依据保留；项目其余空间要等彻底删除后才释放。')) return;
+    remove.disabled = true; remove.textContent = '删除中…';
+    try {
+      const r = await requestJSON('/_api/remove?p=' + encodeURIComponent(rel), { method: 'POST' });
+      if (!r.ok) throw new Error('服务器未确认删除结果');
+      showToast('已移入回收站（' + (r.bytes ? mb(r.bytes) : '') + '）。空间尚未释放，可在下方「回收站」清空。');
+      cards.get(rel)?.el.remove(); cards.delete(rel);
+      load().catch(showConnectionError); loadTrash();
+    } catch (e) { showToast('删除未确认成功：' + e.message + '；请核对项目列表。'); }
+    finally { remove.disabled = false; remove.textContent = '删除'; }
+  }
+});
+function paintRun(projects) {
+  const runs = projects.filter(p => p.task?.running).map(p => ({ p, st: p.task }));
+  const bar = $('#runBar');
+  if (!runs.length) {
+    const paused = projects.find(p => p.task?.status === 'paused');
+    const failed = projects.find(p => ['failed','interrupted','incomplete'].includes(p.task?.status));
+    if (paused) {
+      bar.className = 'runbar warn';
+      bar.innerHTML = '<b>已暂停，可继续</b><span>' + esc(paused.name) + '：' + esc(paused.task.resumeNotice || '达到单次执行步数上限') + '</span>' +
+        '<a class="btn" href="/?p=' + encodeURIComponent(paused.rel) + '&tab=chat">继续任务</a>';
+    } else if (failed) {
+      bar.className = 'runbar warn';
+      bar.innerHTML = '<b>任务未完成</b><span>' + esc(failed.name) + '：' + esc(failed.task.error?.message || '请查看项目日志') + '</span>' +
+        '<a class="btn" href="/?p=' + encodeURIComponent(failed.rel) + '&tab=chat">查看原因</a>';
+    } else bar.classList.add('hidden');
+    document.querySelectorAll('.card.running').forEach(c => c.classList.remove('running')); document.querySelectorAll('.badge').forEach(b => b.remove()); return;
+  }
+  const { p, st } = runs[0];
+  const sec = Math.round((Date.now() - st.since) / 1000);
+  const mm = String(Math.floor(sec / 60)).padStart(2, '0'), ss = String(sec % 60).padStart(2, '0');
+  bar.className = 'runbar' + (st.stalled ? ' warn' : '');
+  bar.innerHTML = '<span class="dot"></span><b>' + (st.cancelling ? '正在停止…' : '正在制作中') + '</b>　' + esc(p.name) +
+    '　<span class="m">' + esc(stageLabel(st.stage)) + ' · 总用时 ' + mm + ':' + ss + '　工具调用 ' + st.steps + ' 次</span>' +
+    (st.last ? '<span class="m">最近：' + esc(st.last.slice(0, 60)) + '</span>' : '') +
+    (st.stalled ? '<span class="m">（超过 90 秒没有新动作，可能在长思考或卡住）</span>'
+      : st.activeTool?.name ? '<span class="m">（后台工具仍在运行，不是卡住）</span>' : '') +
+    '<span style="flex:1"></span>' +
+    /* 停止按钮放在运行条上：这是"正在做"最显眼的地方，
+     * 找不到停止是真实反馈——用户点开项目页才看到，太远。 */
+    (st.cancelling
+      ? '<button class="btn" disabled>正在停止…</button>'
+      : `<button class="btn danger" data-cancel="${esc(p.rel)}">停止</button>`) +
+    '<a class="btn" href="/?p=' + encodeURIComponent(p.rel) + '&tab=chat">看进度 →</a>';
+  // 卡片标记
+  for (const [rel, { el: c, task }] of cards) {
+    const isRun = Boolean(task?.running);
+    c.classList.toggle('running', isRun);
+    if (isRun && !c.querySelector('.badge')) {
+      const th = c.querySelector('.thumb');
+      if (th) { const b = document.createElement('div'); b.className = 'badge'; b.innerHTML = '<span class="d"></span>正在制作'; th.appendChild(b); }
+    }
+  }
+}
+const projectsPolling = visiblePolling(loadProjects, { intervalMs: 2000, onError: showConnectionError });
+refreshAgentState();
+function showConnectionError(e) { $('#connectionStatus').textContent = '项目状态读取失败：' + e.message + '。下方保留上次结果，并非实时状态；正在重连，不会重新提交任务。'; }
+loadTrash();
+
+/* ---------- 选题队列：只读写 schedule.json，派发由后台脚本负责 ---------- */
+const QSTATE = { todo: '未开工', running: '在进行', done: '已完成', failed: '失败', stopped: '停住了' };
+/* 批量移除的勾选状态：按 id 记，重绘队列时保留；
+ * 队列里已经不存在的 id 会被丢弃，避免"选中了一个已删的项"。 */
+const queuePicked = new Set();
+let queueRemoving = false;
+let lastQueue = null;
+const queueChanges = createQueueChanges();
+function queuePaintBulk(items) {
+  const removable = items.filter(item => item.state !== 'running');
+  const box = $('#queueBulk');
+  box.hidden = !items.length;
+  const all = $('#queueSelectAll'), btn = $('#queueRemoveSelected'), label = $('#queueSelected');
+  const picked = removable.filter(item => queuePicked.has(item.id)).length;
+  all.checked = removable.length > 0 && picked === removable.length;
+  all.indeterminate = picked > 0 && picked < removable.length;
+  all.disabled = !removable.length || queueRemoving;
+  btn.disabled = !picked || queueRemoving;
+  btn.textContent = queueRemoving ? '正在移除…' : picked ? '移除选中（' + picked + '）' : '移除选中';
+  label.textContent = items.length && !removable.length
+    ? '队列里都是正在制作的项，无法移除'
+    : picked ? '已选 ' + picked + ' 项' : '可勾选后一次移除多项';
+}
+async function queueLoad() {
+  try {
+    const r = await requestJSON('/_api/schedule');
+    paintQueue(r);
+  } catch (e) {
+    $('#queueMsg').textContent = '读取队列失败：' + e.message;
+    $('#automationQueueStatus').textContent = '待做队列读取失败，当前数量未知。';
+  }
+}
+function paintQueue(q) {
+  lastQueue = q;
+  queueChanges.update(q.items || []);
+
+  /* 制作时间设置。每日发布独立在发布台管理。
+   * q.timing 是后端算好的「现在会不会发生」，界面直接照抄，不在前端重复判断时段。 */
+  const timing = q.timing || {};
+  const build = timing.build || {};
+  $('#buildMode').options[1].disabled = timing.dailyBuildSupported !== true;
+  $('#buildEnabled').checked = Boolean(build.enabled);
+  $('#buildMode').value = build.mode === 'daily' ? 'daily' : 'window';
+  if (build.from) $('#buildFrom').value = build.from;
+  if (build.to) $('#buildTo').value = build.to;
+  if (Number.isInteger(build.dailyLimit)) $('#buildLimit').value = build.dailyLimit;
+  $('#buildState').textContent = build.state || '关';
+  $('#buildState').style.color = build.enabled ? 'var(--accent2)' : 'var(--ink2)';
+  paintBuildMode();
+
+  const allItems = q.items || [];
+  $('#queueTabCount').textContent = allItems.length ? String(allItems.length) : '';
+  const todo = allItems.filter(item => item.state === 'todo').length;
+  $('#automationQueueStatus').textContent = todo ? `有 ${todo} 个选题等待制作。` : '还没有待制作的选题；可以手动添加，也可以从发现选题中加入。';
+  const done = allItems.filter(item => item.state === 'done').length;
+  $('#queueSummary').textContent = allItems.length
+    ? `${todo} 未开工 · ${done} 已完成` : '';
+
+  const box = $('#queueList');
+  box.innerHTML = '';
+  const items = allItems;
+  const ids = new Set(items.map(item => item.id));
+  for (const id of [...queuePicked]) if (!ids.has(id)) queuePicked.delete(id);
+  if (!items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'format-hint';
+    empty.textContent = '队列是空的。手动加一个选题，或从上方候选中选择「想做并加入队列」。';
+    box.appendChild(empty);
+  }
+  for (const item of items) {
+    const row = document.createElement('div');
+    row.className = 'queue-item';
+    row.dataset.queueId = item.id;
+    /* 勾选框：正在制作的项不能批量删，也不给勾选，
+     * 否则用户会以为"选了就会停"——移除只删队列记录，不会停任务。 */
+    const pick = document.createElement('input');
+    pick.type = 'checkbox';
+    pick.className = 'qpick';
+    pick.checked = queuePicked.has(item.id);
+    pick.disabled = item.state === 'running' || queueRemoving;
+    pick.setAttribute('aria-label', '选择「' + item.topic + '」');
+    pick.onchange = () => {
+      if (pick.checked) queuePicked.add(item.id); else queuePicked.delete(item.id);
+      queuePaintBulk(items);
+    };
+    row.appendChild(pick);
+    const topic = document.createElement('span');
+    topic.className = 'qtopic';
+    topic.textContent = item.topic;
+    topic.title = [item.topic, item.why, item.error].filter(Boolean).join('\n');
+    const state = document.createElement('span');
+    state.className = 'qstate ' + item.state;
+    state.textContent = QSTATE[item.state] || item.state;
+    row.append(topic, state);
+
+    /* 待做的项可以「拿去用」：填进上面的新建框并切到选题模式。
+     * 不直接开工——是否现在做由人决定；定时生成关着时尤其需要这一步。 */
+    if (item.state === 'todo') {
+      /* 「去做」是一个完整动作：直接按这一项的选题建项目并开工。
+       * 不再填进上面那个输入框——那个框留给"我自己想一个"。
+       * 两个入口分开，点哪里就是哪里，不用再点第二次。 */
+      const use = document.createElement('button');
+      use.className = 'btn';
+      use.type = 'button';
+      use.textContent = '去做';
+      use.title = '按这个选题建项目并开始制作';
+      use.onclick = async () => {
+        use.disabled = true;
+        use.textContent = '正在建…';
+        const msg = $('#queueMsg');
+        msg.textContent = '正在按「' + item.topic + '」建项目…（十几秒，不要关页面）';
+        msg.className = 'warn';
+        try {
+          const result = await requestJSON('/_api/schedule/start', {
+            method: 'POST', timeoutMs: 120000,
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ id: item.id }),
+          });
+          if (!result.ok) throw new Error(result.error || '服务器没有确认开工');
+          msg.className = 'warn';
+          msg.innerHTML = (result.started ? '已开始制作：' : '项目已创建，制作未启动：') + esc(item.topic.slice(0, 40)) +
+            '　<a class="btn" href="/?p=' + encodeURIComponent(result.rel) + '&tab=chat">看进度</a>';
+          await queueLoad();
+          load().catch(() => {});
+          return;
+        } catch (e) {
+          msg.className = '';
+          msg.textContent = '未确认开工：' + e.message + '。请先核对队列或项目状态。';
+          use.disabled = false;
+          use.textContent = '去做';
+        }
+      };
+      row.appendChild(use);
+    }
+
+    const del = document.createElement('button');
+    del.className = 'btn';
+    del.type = 'button';
+    del.textContent = '移除';
+    del.disabled = item.state === 'running' || queueRemoving;
+    del.onclick = async () => {
+      if (!confirm('从队列移除「' + item.topic + '」？\n只删队列记录，已经做好的项目不受影响。')) return;
+      del.disabled = true;
+      try {
+        queuePicked.delete(item.id);
+        paintQueue(await requestJSON('/_api/schedule', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'remove', id: item.id }) }));
+      }
+      catch (e) { $('#queueMsg').textContent = '移除失败：' + e.message; del.disabled = false; }
+    };
+    row.appendChild(del);
+    box.appendChild(row);
+  }
+  queuePaintBulk(items);
+  /* 队列尾部的结论要跟定时开关一致：
+   * 定时关着时说「下一支会做」是错的——它不会自己做，得你点。 */
+  const buildOn = Boolean(timing.build?.enabled);
+  const running = items.find(item => item.state === 'running');
+  if (running) $('#queueMsg').textContent = '正在做：' + running.topic;
+  else if (!q.next) $('#queueMsg').textContent = '队列里没有待做选题。';
+  else if (!buildOn) $('#queueMsg').textContent = '下一支待做：' + q.next + '（定时生成已关，可点这一项的「去做」）';
+  else $('#queueMsg').textContent = '下一支待做：' + q.next + '（等后台调度）';
+}
+
+/* 全选只作用于「可移除项」：正在制作的项勾不上，也删不掉。
+ * 全选框的 indeterminate 由 paintBulk 维护，用户可随时取消。 */
+$('#queueSelectAll').onchange = () => {
+  const items = lastQueue?.items || [];
+  if ($('#queueSelectAll').checked) {
+    for (const item of items) if (item.state !== 'running') queuePicked.add(item.id);
+  } else queuePicked.clear();
+  paintQueue(lastQueue || { items: [] });
+};
+
+$('#queueRemoveSelected').onclick = async () => {
+  const ids = [...queuePicked];
+  if (!ids.length || queueRemoving) return;
+  const items = (lastQueue?.items || []).filter(item => queuePicked.has(item.id));
+  const names = items.slice(0, 5).map(item => '「' + item.topic + '」').join('、');
+  if (!confirm(`从队列移除 ${ids.length} 个选题？\n${names}${items.length > 5 ? ' 等' : ''}\n\n只删队列记录，已经做好的项目不受影响。`)) return;
+  queueRemoving = true;
+  queuePaintBulk(lastQueue?.items || []);
+  try {
+    const result = await requestJSON('/_api/schedule', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'remove-many', ids }) });
+    for (const id of ids) if (!(result.skipped || []).some(item => item.id === id)) queuePicked.delete(id);
+    paintQueue(result);
+    const msg = $('#queueMsg');
+    msg.className = result.skipped?.length ? 'warn' : '';
+    msg.textContent = `已移除 ${result.removed} 个选题` +
+      (result.skipped?.length ? '；未移除：' + result.skipped.map(item => '「' + item.topic + '」' + item.reason).join('；') : '') +
+      '。已做好的项目不受影响。';
+  } catch (e) {
+    $('#queueMsg').textContent = '批量移除失败：' + e.message + '（队列未改动，可重试）';
+  } finally {
+    queueRemoving = false;
+    queuePaintBulk(lastQueue?.items || []);
+  }
+};
+
+$('#queueAdd').onclick = async () => {
+  const topic = $('#queueTopic').value.trim();
+  if (!topic) { $('#queueMsg').textContent = '先写一句选题。'; return; }
+  const btn = $('#queueAdd');
+  btn.disabled = true;
+  try {
+    paintQueue(await requestJSON('/_api/schedule', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'add', topic }) }));
+    $('#queueTopic').value = '';
+  } catch (e) { $('#queueMsg').textContent = '加入失败：' + e.message; }
+  finally { btn.disabled = false; }
+};
+
+/* 这里只保存制作时间，不修改独立的每日发布排程。 */
+function paintBuildMode() {
+  const daily = $('#buildMode').value === 'daily';
+  $('#buildWindow').hidden = daily;
+  $('#buildModeHint').textContent = daily
+    ? '按工作台本地时间启动；服务须在线，没选题或错过不补做。'
+    : '后台调度器在指定时段取选题。失败的选题不会自动重做。' +
+      (lastQueue && lastQueue.timing?.dailyBuildSupported !== true ? '定点启动需重启工作台服务后刷新。' : '');
+}
+$('#buildMode').onchange = paintBuildMode;
+paintBuildMode();
+$('#timingSave').onclick = async () => {
+  if ($('#buildMode').value === 'daily' && lastQueue?.timing?.dailyBuildSupported !== true) return;
+  const body = { action: 'timing',
+    build: { enabled: $('#buildEnabled').checked, mode: $('#buildMode').value, from: $('#buildFrom').value, to: $('#buildTo').value,
+      dailyLimit: Number($('#buildLimit').value) || 3 } };
+  try {
+    const result = await requestJSON('/_api/schedule', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    paintQueue(result);
+    $('#timingMsg').textContent = '已保存。生成：' + (result.timing?.build?.state || '') + '；每日发布请到发布台设置。';
+  } catch (e) { $('#timingMsg').textContent = '保存失败：' + e.message; }
+};
+
+/* 组装层连接两者；队列不引用发现面板，面板不查询队列 DOM。 */
+const sectionTabs = attachViewTabs($('#queueBox'));
+$('#automationEntry').onclick = event => {
+  if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  $('#queueBox').open = true;
+  sectionTabs.select('automationPanel', { focus: true });
+  $('#queueBox').scrollIntoView({ block: 'start' });
+};
+$('#automationQueueLink').onclick = () => {
+  sectionTabs.select('queuePanel', { focus: true });
+  $('#queueTopic').focus();
+};
+attachDiscoveryPanel($('#discoveryPanel'), {
+  request: requestJSON, refreshQueue: queueLoad,
+  showQueue: () => { sectionTabs.select('queuePanel', { focus: true }); $('#queueList').scrollIntoView({ block: 'nearest' }); },
+  subscribeQueueChanges: queueChanges.subscribe,
+});
+queueLoad();
+</script>
+</body>
+</html>

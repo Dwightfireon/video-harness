@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>映序 · 模型设置</title>
+<style>
+:root{--bg:#15181A;--panel:#1D2124;--panel2:#22262A;--line:#31363B;--ink:#D9DEE2;--ink2:#8B959E;--ok:#7BE3A4;--warn:#F0B49B;--bad:#E38B7B;--accent2:#2F9E5C;--mono:'SF Mono',Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,"PingFang SC","Hiragino Sans GB",system-ui,sans-serif}
+header{padding:22px 28px 6px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{font-size:19px;margin:0}
+header .sub{color:var(--ink2);font-size:12px}
+main{padding:10px 28px 60px;max-width:860px;display:flex;flex-direction:column;gap:16px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+h2{margin:0 0 4px;font-size:16px}
+.lead{margin:0 0 14px;color:var(--ink2);font-size:13px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+select,input[type=password],input[type=text]{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit;font-size:13px}
+select{max-width:100%;min-width:220px}
+input[type=password],input[type=text]{width:320px;max-width:100%;font-family:var(--mono);font-size:12.5px}
+button{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px 13px;font-size:12.5px;cursor:pointer}
+button:hover{border-color:var(--accent2)}
+button.primary{background:var(--accent2);border-color:var(--accent2);color:#08120B;font-weight:700}
+button:disabled{opacity:.45;cursor:default}
+label{display:block;font-size:12.5px;color:var(--ink2);margin:0 0 5px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--ink2)}
+.pill.on{border-color:var(--accent2);color:var(--ok)}
+.pill.off{border-color:var(--bad);color:var(--bad)}
+.pill.warn{border-color:var(--warn);color:var(--warn)}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:10px}
+.card.sel{border-color:var(--accent2)}
+.card h3{margin:0 0 2px;font-size:14px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.base{font-family:var(--mono);font-size:11px;color:var(--ink2);word-break:break-all;margin:4px 0 10px}
+.fp{font-family:var(--mono);font-size:11px;color:var(--ink2);margin:-4px 0 10px}
+.fp b{color:var(--ink);letter-spacing:.06em}
+.note{color:var(--ink2);font-size:12.5px;line-height:1.75;margin:10px 0 0}
+.note code{font-family:var(--mono);background:var(--panel2);padding:1px 6px;border-radius:6px}
+#msg{font-size:12.5px;white-space:pre-wrap;min-height:18px}
+#msg.ok{color:var(--ok)} #msg.err{color:var(--bad)} #msg.warn{color:var(--warn)}
+a.back{color:var(--ink2);text-decoration:none;font-size:12.5px}
+a.back:hover{color:var(--accent2)}
+fieldset{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:12px 0 0}
+legend{padding:0 6px;font-size:12px;color:var(--ink2)}
+</style>
+<link rel="stylesheet" href="/_vh/theme.css">
+<link rel="stylesheet" href="/_vh/settings.css">
+<script type="module" src="/_vh/workbench-shell.mjs"></script>
+</head>
+<body class="workspace-page settings-page" data-page="settings">
+<header>
+  <h1>模型设置</h1>
+  <span class="sub">为下一次创作选择模型</span>
+  <span style="flex:1"></span>
+  <a class="back" href="/">返回创作空间 ↗</a>
+</header>
+<main>
+  <div class="settings-intro"><p>偏好与连接</p><h2>选择合适的创作搭档。</h2><span>配置只影响之后启动或继续的任务，正在制作的视频不受影响。</span></div>
+  <section>
+    <h2>当前模型</h2>
+    <p class="lead">用于后续制作。切换不会改写已有项目，失败后也不会自动更换渠道。</p>
+    <div id="current"></div>
+    <div id="runningTasks"></div>
+  </section>
+
+  <section>
+    <h2>可用渠道</h2>
+    <p class="lead">密钥存在本机私有文件（权限 600），不进项目、不进日志、不回显。下面只显示"是否已配置"。</p>
+    <div id="providers"></div>
+  </section>
+
+  <section>
+    <h2>连接凭证</h2>
+    <p class="lead">选择渠道后填写 API key，留空则保持原样。密钥仅存本机；保存后显示 8 位校验指纹，方便确认是否已更新。</p>
+    <fieldset>
+      <legend>渠道</legend>
+      <select id="keyProvider" aria-label="凭证所属渠道"></select>
+    </fieldset>
+    <fieldset>
+      <legend>API key</legend>
+      <input type="password" id="keyInput" aria-label="API key" autocomplete="off" spellcheck="false" placeholder="粘贴 API key（不会回显）">
+    </fieldset>
+    <div class="row">
+      <button class="primary" id="saveKey">保存凭证</button>
+      <button id="clearKey">删除该渠道密钥</button>
+    </div>
+    <div id="keyResult"></div>
+    <p class="note">优先级从高到低：<b>本页保存的密钥</b> → 环境变量 <code>OPEN_DESIGN_API_KEY</code> → harness 凭证文件 → <code>vh.config.json</code> → opencode 凭证 → opencode 凭证库。本页保存的会覆盖下面所有来源。</p>
+  </section>
+
+  <section>
+    <h2>说明</h2>
+    <p class="note">
+      · 切换只影响<strong>之后启动</strong>的任务；正在跑的任务不受影响。<br>
+      · 换 key 立即生效，不需要重启工作台；下一次任务会读新 key。<br>
+      · 渠道失败时不会自动切到另一个渠道重试；暂停后由你决定用哪个继续。<br>
+      · 额度、网络、证书会在实际调用时验证，页面上的"已配置"只说明本机有这份凭证。<br>
+      · 配置文件位置：<code>~/.config/video-harness/providers.json</code>（权限 600）。
+    </p>
+    <div id="msg"></div>
+  </section>
+</main>
+<script type="module">
+import { requestJSON } from '/_vh/http.mjs';
+import { visiblePolling } from '/_vh/visible-polling.mjs';
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let state = { providers: [], current: { provider: 'opendesign', model: '' } };
+
+/* 时间只显示到分钟：更新时间的用途是"这是我刚换的那次吧"，不需要秒。 */
+function fmtTime(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '时间未知';
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function say(text, kind = '') {
+  const m = $('#msg');
+  m.className = kind; m.textContent = text;
+}
+
+async function load(refresh = false) {
+  try {
+    state = await requestJSON('/_api/providers?models=' + (refresh ? 'refresh' : 'load'));
+    render();
+  } catch (error) { say(error.message, 'err'); }
+}
+
+function modelOptions(p) {
+  const option = (m, text = m) => `<option value="${esc(m)}"${m === p.model ? ' selected' : ''}>${esc(text)}</option>`;
+  if (!p.catalog) return p.models.map(m => option(m)).join('');
+  const free = new Set(p.freeModels || []);
+  const group = p.name === 'opencode-go' ? 'OpenCode Go 套餐 · 免费' : 'OpenCode Zen · 免费';
+  const missing = p.catalog.currentMissing ? `<option value="" selected disabled>${esc(p.model)}（旧选择，请重新选）</option>` : '';
+  const placeholder = !missing && !p.model ? '<option value="" selected disabled>请选择模型</option>' : '';
+  return missing + placeholder +
+    (free.size ? `<optgroup label="${group}">${[...free].map(m => option(m, `${m}（${group}）`)).join('')}</optgroup>` : '') +
+    `<optgroup label="其他模型">${p.models.filter(m => !free.has(m) && !(p.catalog.currentMissing && m === p.model)).map(m => option(m)).join('')}</optgroup>`;
+}
+
+/* 正在跑的任务各用哪个渠道：切渠道只对"之后启动/继续"的任务生效，
+   已在跑的中途不会换。不显示的话，用户会以为切换没起作用。 */
+async function loadRunning() {
+  try {
+    const r = await requestJSON('/_api/projects', { cache: 'no-store' });
+    if (!Array.isArray(r.projects)) throw new Error('项目列表返回不完整');
+    const running = (r.projects || []).filter(p => p.task && (p.task.running || p.task.orphanRunning));
+    const box = $('#runningTasks');
+    if (!box) return;
+    if (!running.length) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="note" style="margin-top:12px"><b>正在执行的任务</b>（中途不会换渠道；停止后再继续才会用新渠道）：<br>' +
+      running.map(p => '· ' + esc(p.name) + ' — ' + esc(p.task.provider || '渠道未知') +
+        (p.task.orphanRunning ? '（子进程仍在跑）' : '')).join('<br>') + '</div>';
+  } catch {}
+}
+
+function render() {
+  const cur = state.providers.find(p => p.name === state.current.provider);
+  $('#current').innerHTML = cur
+    ? `<div class="card sel"><h3>${esc(cur.label)} <span class="pill on">使用中</span></h3>
+       <div class="base">${esc(cur.base || (cur.name === 'opencode' ? 'OpenCode 原生端点' : '（未配置地址）'))}</div>
+       <div>模型：<code>${esc(state.current.model || cur.model || '—')}</code></div></div>`
+    : '<p class="lead">未选中任何渠道。</p>';
+
+  $('#providers').innerHTML = state.providers.map(p => `
+    <div class="card ${p.selected ? 'sel' : ''}">
+      <h3>${esc(p.label)}
+        ${p.selected ? '<span class="pill on">使用中</span>' : ''}
+        ${p.hasKey ? `<span class="pill on">已配置密钥</span>` : `<span class="pill off">${p.name === 'opencode' ? '由 OpenCode 处理登录' : '缺少密钥'}</span>`}
+        ${p.freeModels && p.freeModels.length ? `<span class="pill on">${p.freeModels.length} 个免费模型</span>` : ''}
+      </h3>
+      <div class="base">${esc(p.base || (p.name === 'opencode' ? 'OpenCode 原生端点' : '（未配置地址）'))}${p.keySource ? ' · 密钥来自 ' + esc(p.keySource) : ''}</div>
+      ${p.keyFingerprint ? `<div class="fp">指纹 <b>${esc(p.keyFingerprint)}</b>${p.keyUpdatedAt ? ' · 本页保存在 ' + esc(fmtTime(p.keyUpdatedAt)) : ''}</div>` : ''}
+      <div class="row">
+        <div>
+          <label>模型</label>
+          <select data-model="${esc(p.name)}" aria-label="${esc(p.label)}的模型">
+             ${modelOptions(p)}
+          </select>
+        </div>
+        <button data-use="${esc(p.name)}" class="${p.selected ? '' : 'primary'}">${p.selected ? '应用设置' : '使用此渠道'}</button>
+        ${p.catalog ? '<button type="button" data-refresh-models>刷新模型</button>' : ''}
+      </div>
+      ${p.catalog ? `<p class="note">${state.catalogErrors?.[p.name] ? '刷新失败。' : ''}${p.catalog.at ? `${p.catalog.stale ? '目录缓存已过期 · ' : ''}上次更新：${esc(fmtTime(p.catalog.at))}。` : '尚未取得官方目录。'}目录不保证当前账号、地区或额度可用。${p.name === 'opencode' ? 'Zen 仅用于 OpenCode 执行器。' : ''}</p>` : ''}
+      <div class="row">
+        <div style="flex:1;min-width:0">
+          <label>接口地址（留空用默认）</label>
+          <input type="text" data-base="${esc(p.name)}" aria-label="${esc(p.label)}的接口地址" value="${esc(p.base || '')}" placeholder="https://…/v1" spellcheck="false">
+        </div>
+        <button data-savebase="${esc(p.name)}" style="align-self:flex-end">保存地址</button>
+      </div>
+    </div>`).join('');
+
+  for (const b of document.querySelectorAll('[data-use]')) {
+    b.onclick = () => {
+      const item = state.providers.find(p => p.name === b.dataset.use);
+      if (!item?.catalog) return select(b.dataset.use);
+      const choice = [...document.querySelectorAll('[data-model]')].find(s => s.dataset.model === b.dataset.use)?.value;
+      if (!choice) { say('请先选一个模型。', 'warn'); return; }
+      return select(b.dataset.use, choice);
+    };
+  }
+  for (const s of document.querySelectorAll('[data-model]')) {
+    if (!state.providers.find(p => p.name === s.dataset.model)?.catalog) s.onchange = () => select(s.dataset.model, s.value);
+  }
+  for (const b of document.querySelectorAll('[data-refresh-models]')) b.onclick = async () => {
+    b.disabled = true;
+    try { await load(true); } finally { b.disabled = false; }
+  };
+  for (const b of document.querySelectorAll('[data-savebase]')) {
+    b.onclick = async () => {
+      const input = document.querySelector('[data-base="' + b.dataset.savebase + '"]');
+      const r = await (await fetch('/_api/provider/base', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: b.dataset.savebase, base: input.value }) })).json();
+      if (r.error) { say(r.error, 'err'); return; }
+      state = { ...state, providers: r.providers, current: r.current };
+      render();
+      say('地址已保存。', 'ok');
+    };
+  }
+  $('#keyProvider').innerHTML = state.providers.map(p =>
+    `<option value="${esc(p.name)}">${esc(p.label)}${p.hasKey ? '（已配置）' : '（缺密钥）'}</option>`).join('');
+}
+
+async function select(provider, model) {
+  const item = state.providers.find(p => p.name === provider);
+  // 不传 model 时用该渠道自己的当前模型；<select> 未匹配会静默选中第一项，
+  // 所以这里以数据为准，不用 DOM 的选中值。
+  const chosen = model || (item && item.model) || null;
+  const r = await (await fetch('/_api/provider/select', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ provider, model: chosen }) })).json();
+  if (r.error) { say(r.error, 'err'); return; }
+  state = { ...state, providers: r.providers, current: r.current };
+  render();
+  const label = (state.providers.find(p => p.name === provider) || {}).label || provider;
+  say('已切换到 ' + label + ' / ' + (r.current.model || '默认模型') +
+    '。\n· 之后启动的任务（包括点「继续任务」）会立刻用它。\n· 已经在跑的任务不会中途换模型，需要停下再继续才会换。', 'ok');
+}
+
+async function saveKey(clear) {
+  const provider = $('#keyProvider').value;
+  const key = $('#keyInput').value;
+  if (!clear && !key.trim()) { say('请先粘贴 API key；留空不会改动任何东西。', 'warn'); return; }
+  const r = await (await fetch('/_api/provider/key', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ provider, key, clear: !!clear }) })).json();
+  if (r.error) { say(r.error, 'err'); return; }
+  $('#keyInput').value = '';
+  state.providers = r.providers;
+  render();
+  const label = (state.providers.find(p => p.name === provider) || {}).label || provider;
+  if (clear) {
+    $('#keyResult').innerHTML = '';
+    say('已删除该渠道在本页保存的密钥。\n· 若这个渠道还有别的凭证来源，工作台会回落到那些来源（见卡片上的「密钥来自」）。', 'ok');
+    return;
+  }
+  const saved = r.saved || {};
+  // 明确报出"现在生效的是哪一把"。只写"已保存"无法区分是否真的替换成功。
+  $('#keyResult').innerHTML =
+    `<div class="card"><h3>${esc(label)} <span class="pill on">已替换</span></h3>` +
+    `<div class="fp">新指纹 <b>${esc(saved.keyFingerprint || '—')}</b></div>` +
+    `<div class="base">生效来源：${esc(saved.keySource || '未知')}</div></div>`;
+  say('密钥已保存（不会回显）。\n· 立即可用，不用重启工作台；下一次任务会读新 key。\n· 请核对上面的指纹与渠道卡片里的指纹一致。', 'ok');
+}
+$('#saveKey').onclick = () => saveKey(false);
+$('#clearKey').onclick = () => saveKey(true);
+load();
+// 有任务在跑时，定期刷新"正在用的渠道"，切了渠道能立刻看到区别。
+visiblePolling(loadRunning, { intervalMs: 3000 });
+</script>
+</body>
+</html>

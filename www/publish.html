@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>映序 · 发布台</title>
+<link rel="stylesheet" href="/_vh/panel.css">
+<style>
+/* 发布页布局：三块固定、中间滚动。
+ *
+ *   顶栏（账号/刷新）
+ *   主体：左项目列表 | 右表单+摘要      ← 各自滚动
+ *   底部操作栏（试运行 / 提交 / 还差什么） ← 始终可见
+ *
+ * 旧版把提交按钮放在表单流里，用户滚下去看预览时按钮就滚没了。
+ * 操作栏贴底是这里唯一正确的做法：投稿只做一次，不能靠找。 */
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;overflow:hidden;
+  font:13px/1.6 -apple-system,"PingFang SC","Hiragino Sans GB",system-ui,sans-serif}
+
+#pubTop{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel);flex-shrink:0;flex-wrap:wrap}
+#pubTop h1{margin:0;font-size:15px}
+#pubTop .spacer{flex:1}
+.pub-account{font-size:12px;padding:5px 11px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink2);cursor:pointer}
+.pub-account.ok{color:#7BE3A4;border-color:#7BE3A4}
+.pub-account.warn{color:#E38B7B;border-color:#E38B7B}
+
+#pubNotice{margin:0;padding:8px 20px;font-size:12.5px;white-space:pre-wrap;line-height:1.6;background:var(--panel2);border-bottom:1px solid var(--line);flex-shrink:0;max-height:88px;overflow:auto}
+#pubNotice.hidden{display:none}
+#pubNotice.ok{color:#7BE3A4}
+#pubNotice.bad{color:#E38B7B}
+
+#pubMain{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:0}
+@media(max-width:980px){#pubMain{grid-template-columns:minmax(0,1fr)}}
+
+#pubLeft{border-right:1px solid var(--line);overflow-y:auto;padding:14px}
+#pubRight{overflow-y:auto;padding:14px 18px}
+
+.pub-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:12px}
+.pub-card h2{margin:0 0 8px;font-size:13.5px;display:flex;align-items:center;gap:8px}
+.pub-hint{color:var(--ink2);font-size:11.5px;margin:0 0 10px;line-height:1.6}
+.pub-row{display:flex;align-items:stretch;gap:8px;margin-bottom:6px}
+.pub-pick{margin:0;flex-shrink:0;align-self:center;accent-color:#2F9E5C;width:15px;height:15px;cursor:pointer}
+.pub-pick:disabled{cursor:default;opacity:.4}
+.pub-item{flex:1;min-width:0;text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--ink);padding:8px 10px;cursor:pointer}
+.pub-item:hover{border-color:#2F9E5C}
+.pub-row.on .pub-item{border-color:#2F9E5C;background:#1B2721}
+.pub-item:disabled{cursor:default;opacity:.6}
+.pub-item .t{display:block;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pub-item .m{display:block;font-size:11px;color:var(--ink2);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pub-item .m.bad{color:#E38B7B}
+
+.pub-field{display:block;margin-bottom:10px}
+.pub-field > span{display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:var(--ink2);margin-bottom:4px}
+.pub-field > span .req{color:#E38B7B}
+.pub-field input,.pub-field textarea,.pub-field select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:8px 10px;font:inherit;font-size:13px}
+.pub-field input:focus,.pub-field textarea:focus,.pub-field select:focus{outline:none;border-color:#2F9E5C}
+.pub-field.needs input,.pub-field.needs select{border-color:#E38B7B}
+.pub-field textarea{resize:vertical;line-height:1.65;min-height:90px}
+
+/* 摘要：一眼看到要发什么，不靠读 JSON */
+.pub-summary{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px;margin-bottom:10px}
+.pub-summary dt{color:var(--ink2)}
+.pub-summary dd{margin:0;overflow-wrap:anywhere}
+.pub-summary .ok{color:#7BE3A4}
+.pub-summary .bad{color:#E38B7B}
+
+.pub-block{padding:9px 12px;border-radius:9px;font-size:12px;white-space:pre-wrap;line-height:1.7;margin-bottom:8px;border:1px solid var(--line);background:var(--panel2)}
+.pub-block.ok{border-color:#7BE3A4;color:#7BE3A4}
+.pub-block.bad{border-color:#E38B7B;color:#E38B7B}
+.pub-block.warn{border-color:#D8B26A;color:#D8B26A}
+.pub-block.note{border-color:var(--line);color:var(--ink2);font-size:11.5px}
+
+details.pub-jsonbox{margin-top:10px}
+details.pub-jsonbox summary{cursor:pointer;font-size:11.5px;color:var(--ink2);padding:5px 0;user-select:none}
+details.pub-jsonbox summary:hover{color:var(--ink)}
+.pub-json{margin:6px 0 0;padding:10px;border-radius:8px;background:#0F1214;color:#B8C2C8;
+  font:11px/1.55 ui-monospace,'SF Mono',Menlo,monospace;max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* 底部操作栏：始终可见，永远在拇指够得到的地方 */
+#pubActions{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:11px 20px;
+  border-top:1px solid var(--line);background:var(--panel);box-shadow:0 -6px 18px rgba(0,0,0,.28)}
+#pubReady{font-size:12px;color:var(--ink2);flex:1;min-width:0}
+#pubReady.blocked{color:#E38B7B}
+#pubReady.ready{color:#7BE3A4}
+.pub-btn{border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+  padding:9px 16px;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
+.pub-btn:hover:not(:disabled){border-color:#2F9E5C}
+.pub-btn:disabled{opacity:.45;cursor:not-allowed}
+.pub-btn.primary{background:#147A3A;border-color:#2F9E5C;color:#fff;font-weight:600}
+.pub-btn.primary:hover:not(:disabled){background:#1a8f46}
+.pub-btn.danger{color:#E38B7B;border-color:#5a3b36}
+
+.pub-refs{margin:2px 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel2)}
+.pub-refs-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pub-refs-list{margin:10px 0;display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
+.pub-ref-item{display:flex;gap:8px;align-items:flex-start;font-size:11.5px;line-height:1.5}
+.pub-ref-item input{margin:2px 0 0;flex-shrink:0;accent-color:#2F9E5C}
+.pub-ref-item .ref-label{color:var(--ink);overflow-wrap:anywhere}
+.pub-ref-item .ref-url{color:var(--ink2);overflow-wrap:anywhere;font-family:ui-monospace,monospace;font-size:11px}
+.pub-refs-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#pubBatchList{list-style:none;padding:0;margin:8px 0 0;font-size:11.5px;max-height:150px;overflow:auto}
+#pubBatchList li{padding:3px 0;overflow-wrap:anywhere}
+#pubBatchList li.ok{color:#7BE3A4}
+#pubBatchList li.bad{color:#E38B7B}
+.pub-batch-row{display:flex;gap:8px;align-items:center}
+.pub-batch-row input[type=number]{width:74px}
+
+.pub-modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:50}
+.pub-modal.hidden{display:none}
+.pub-modalbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;max-width:340px;text-align:center}
+.pub-modalbox img{background:#fff;border-radius:8px;padding:6px;width:230px;height:230px}
+.pub-modal-actions{display:flex;gap:8px;justify-content:center;margin-top:12px}
+</style>
+<link rel="stylesheet" href="/_vh/publish.css">
+<script type="module" src="/_vh/workbench-shell.mjs"></script>
+</head>
+<body class="workspace-page publish-page" data-page="publish">
+<header id="pubTop">
+  <h1>发布台</h1>
+  <span class="sub">为作品准备好最后一步</span>
+  <span class="spacer"></span>
+  <button id="pubAccount" class="pub-account">正在读取账号…</button>
+  <button id="pubReload" class="pub-btn" style="padding:5px 11px;font-size:12px">刷新</button>
+</header>
+
+<div id="pubNotice" class="hidden" role="status" aria-live="polite"></div>
+
+<main id="pubMain">
+  <aside id="pubLeft">
+    <section class="pub-card">
+      <h2>选择作品 <span id="pubCount" class="pill" style="font-size:11px"></span></h2>
+      <p class="pub-hint">点击编辑投稿信息，勾选加入待发队列。未出片的作品也可先加入。</p>
+      <p id="pubProjectsStatus" class="pub-hint" role="status" aria-live="polite">正在读取项目…</p>
+      <div id="pubProjects"></div>
+    </section>
+
+    <section class="pub-card" id="publishSchedule" aria-labelledby="publishScheduleTitle">
+      <h2 id="publishScheduleTitle">自动发布 <span id="pubBatchCount" class="pill" style="font-size:11px">状态未知</span></h2>
+      <label class="pub-field"><span>何时开始投稿</span><select id="pubScheduleTrigger" disabled>
+        <option value="daily">每天到点投一支</option>
+        <option value="ready">成片后自动投稿</option>
+      </select></label>
+      <p id="pubScheduleTriggerHint" class="pub-hint"></p>
+      <label class="pub-field"><span>发布范围</span><select id="pubScheduleScope">
+        <option value="selected">仅显式选定的作品</option>
+        <option value="production-queue">当前及今后的制作队列</option>
+      </select></label>
+      <p id="pubScheduleScopeHint" class="pub-hint"></p>
+      <label class="pub-field"><span>自动发布分区</span><select id="pubSchedulePartition" disabled></select></label>
+      <p class="pub-hint" id="pubSchedulePartitionHint">只用于定时发布，不影响单条投稿。</p>
+      <div id="pubScheduleDaily">
+        <div id="pubScheduleTimes" class="pub-time-list"></div>
+        <button id="pubScheduleAdd" type="button" class="pub-btn">＋ 添加每日时点</button>
+      </div>
+      <div id="pubScheduleReady" hidden>
+        <label class="pub-field"><span>确认收稿后，至少等几秒再投下一支</span>
+          <input id="pubScheduleInterval" type="number" step="1" min="30" max="86400" value="180">
+        </label>
+        <p class="pub-hint">30 秒起；180 秒就是 3 分钟。只逐支投，不并发。</p>
+      </div>
+      <p id="pubScheduleZone" class="pub-hint"></p>
+      <div class="pub-batch-row">
+        <button id="pubScheduleSave" type="button" class="pub-btn" disabled>保存排程</button>
+        <button id="pubScheduleEnable" type="button" class="pub-btn primary" disabled>确认并启用自动发布</button>
+        <button id="pubSchedulePause" type="button" class="pub-btn" disabled>暂停排程</button>
+      </div>
+      <p id="pubScheduleDirty" class="pub-hint" aria-live="polite"></p>
+      <p id="pubScheduleStatus" class="pub-hint" role="status" aria-live="polite">正在读取排程…</p>
+      <p id="pubScheduleError" class="pub-hint bad" role="alert"></p>
+      <button id="pubScheduleRetry" type="button" class="pub-btn">重新读取排程</button>
+      <p id="pubScheduleNext" class="pub-hint"></p>
+      <p id="pubSchedulePending" class="pub-hint" role="status" aria-live="polite">队列状态尚未读取。</p>
+      <ul id="pubSchedulePendingItems" class="pub-pending-items"></ul>
+      <div id="pubScheduleCalendarWrap">
+        <h3 class="pub-schedule-heading">已保存排程 · 未来七天</h3>
+        <div id="pubScheduleCalendar" class="pub-calendar" aria-label="未来七天的每日发布时间"></div>
+      </div>
+      <h3 id="pubScheduleQueueHeading" class="pub-schedule-heading">选定顺序 <small>修改后需保存</small></h3>
+      <ol id="pubScheduleQueue" class="pub-schedule-queue"></ol>
+      <p class="pub-hint">仅在工作台服务运行时投稿，可关闭网页。失败即暂停，不自动重试。收稿不等于审核通过或已公开。</p>
+    </section>
+  </aside>
+
+  <section id="pubRight">
+    <div class="pub-card" id="pubFormCard">
+      <h2>投稿内容 <span id="pubReadyBadge" class="pill" style="font-size:11px"></span></h2>
+
+      <label class="pub-field" id="fieldTitle">
+        <span>标题 <span class="req">*</span><em id="pubTitleCount" style="font-style:normal;margin-left:auto"></em></span>
+        <input id="pubTitle" maxlength="80">
+      </label>
+
+      <label class="pub-field" id="fieldPartition">
+        <span>投稿分区 <span class="req">*</span><em id="pubPartitionHint" style="font-style:normal;margin-left:auto"></em></span>
+        <select id="pubPartition"></select>
+      </label>
+
+      <div class="pub-field" id="fieldCover">
+        <span>封面 <em id="pubCoverHint" style="font-style:normal;margin-left:auto"></em></span>
+        <div id="pubCoverBox" class="pub-cover"></div>
+      </div>
+      <label class="pub-field" id="fieldTags">
+        <span>标签 <span class="req">*</span><em style="font-style:normal;margin-left:auto">最多 10 个，空格或逗号分隔</em></span>
+        <input id="pubTags">
+      </label>
+
+      <section class="pub-promotion" aria-label="商业推广声明">
+        <label class="pub-promotion-toggle"><input type="checkbox" id="pubPromotion"> 包含商业推广（内容含营销信息）</label>
+        <p class="pub-hint">勾选后提交「内容含营销信息」创作者声明，收稿后回读平台资料确认；不会仅凭投稿成功就说声明已生效。推广自己的网站不需要甲方或花火商单。以下补充资料均为选填，留空不传。</p>
+        <div id="pubPromotionDetails" hidden>
+          <label class="pub-field"><span>品牌 / 网站名称（选填）</span><input id="pubPromotionBrand" maxlength="80" placeholder="例如网站名称；可以留空"></label>
+          <label class="pub-field"><span>推广行业（选填）</span><select id="pubPromotionIndustry"><option value="">不填写</option></select></label>
+          <fieldset class="pub-promotion-types"><legend>推广形式（选填，可多选）</legend><div id="pubPromotionTypes"></div></fieldset>
+          <p id="pubPromotionCatalogStatus" class="pub-hint" role="status"></p>
+          <button id="pubPromotionCatalogRetry" type="button" class="pub-btn" hidden>重新读取行业和形式</button>
+        </div>
+        <p class="pub-hint">商业声明与其他投稿资料一起保存；不会开通外链权限，也不等于平台审核通过。创作者声明按 B 站当前规则投稿后不可编辑，请在提交前核对。</p>
+      </section>
+
+      <label class="pub-field" id="fieldDesc">
+        <span>简介 <em id="pubDescCount" style="font-style:normal;margin-left:auto"></em></span>
+        <textarea id="pubDesc" rows="6"></textarea>
+      </label>
+
+      <!-- 参考链接：从项目里已写下的来源提取，不编造。
+           默认折叠，因为大多数人不需要每次看；需要时一键追加。 -->
+      <div class="pub-refs" id="pubRefs">
+        <div class="pub-refs-head">
+          <button type="button" id="pubRefsToggle" class="pub-btn" style="padding:5px 10px;font-size:12px">参考资料 <span id="pubRefsCount"></span></button>
+          <span class="pub-hint" id="pubRefsNote" style="margin:0"></span>
+        </div>
+        <div id="pubRefsBody" class="hidden">
+          <div id="pubRefsList" class="pub-refs-list"></div>
+          <div class="pub-refs-actions">
+            <button type="button" id="pubRefsAppend" class="pub-btn" style="padding:6px 12px;font-size:12px">追加到简介</button>
+            <span class="pub-hint" style="margin:0">只追加，不改已有文字；超字数会自动少放几条。</span>
+          </div>
+        </div>
+      </div>
+      <div class="pub-form-save">
+        <button id="pubSaveForm" type="button" class="pub-btn" disabled>保存作品投稿资料</button>
+        <button id="pubRestoreForm" type="button" class="pub-btn" disabled>读取已保存资料</button>
+        <p id="pubFormStatus" class="pub-hint" role="status">先选择作品。</p>
+        <p class="pub-hint">标题、标签、简介、封面选择、商业声明与单条分区一起保存，不修改原始文案，不发布、不启用排程。手动投稿用当前表单；自动发布用已保存资料及排程分区。</p>
+      </div>
+    </div>
+
+    <div class="pub-card">
+      <h2>投稿预览</h2>
+      <div id="pubSummary"></div>
+      <div id="pubIssues"></div>
+      <details class="pub-jsonbox">
+        <summary>查看完整请求字段</summary>
+        <pre id="pubJson" class="pub-json"></pre>
+      </details>
+    </div>
+  </section>
+</main>
+
+<footer id="pubActions">
+  <span id="pubReady">正在读取…</span>
+   <button id="pubPlanBtn" class="pub-btn">检查投稿信息</button>
+  <button id="pubSubmit" class="pub-btn primary" disabled>提交投稿</button>
+</footer>
+<section id="pubUpload" class="pub-upload" hidden aria-label="当前投稿进度" aria-live="polite">
+  <strong id="pubUploadStage"></strong><progress id="pubUploadBar" max="100"></progress><span id="pubUploadInfo"></span>
+</section>
+
+<div id="pubLogin" class="pub-modal hidden">
+  <div class="pub-modalbox">
+    <h2 style="margin:0 0 6px;font-size:15px">扫码登录哔哩哔哩</h2>
+    <p class="pub-hint">手机 B 站 App 扫码。登录信息只存本机，不进项目、不进交付包。</p>
+    <img id="pubQrImg" alt="登录二维码">
+    <p id="pubQrStatus" class="pub-hint">正在获取二维码…</p>
+    <div class="pub-modal-actions">
+      <button id="pubQrRefresh" class="pub-btn">换一张</button>
+      <button id="pubLogout" class="pub-btn">退出登录</button>
+      <button id="pubQrClose" class="pub-btn">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initPublishPage } from '/_vh/publish-panel.mjs';
+initPublishPage();
+</script>
+</body>
+</html>

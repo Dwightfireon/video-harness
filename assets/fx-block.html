@@ -1,0 +1,949 @@
+/* ============================================================
+   fx.v2 —— 画面质量手法库（由 vh enhance 注入，勿手改此段）
+   原则（来自 promo-film-skill / guizang 实践，适配纯函数引擎）：
+   - 一条缓动：全片只用 eOut 幂曲线，别再引第二套
+   - 停死：运镜 dolly() 到位后主动停，不掉 0.02px/frame 以下的「伪运动」
+   - 画布层每帧重画（t 的纯函数），颗粒默认 20fps 节流
+   ============================================================ */
+const FX = (() => {
+  /* 幂缓动（全片唯一缓动；e 指数统一取 3） */
+  const eOut = (p, e = 3) => 1 - Math.pow(1 - Math.max(0, Math.min(1, p)), e);
+  const eInOut = (p, e = 3) => p < .5 ? Math.pow(p * 2, e) / 2 : 1 - Math.pow(2 - p * 2, e) / 2;
+
+  /* 确定性伪随机（同 seed 每帧同值 —— 引擎可复现的根基，勿用 Math.random） */
+  const mulberry = (seed) => () => {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+
+  /* ---------- 画布层：fxCanvas(root, {fps, draw}) ----------
+     draw(ctx, t, W, H) 收相对时间；每帧整块重画，绝不依赖上一帧。
+     fps 节流：粒子走 30fps、颗粒走 20fps（≤20fps 的颗粒才是纸的纤维，60fps 是沙沙抖）。 */
+  function fxCanvas(root, opt = {}) {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    c.style.cssText = 'position:absolute;inset:0;pointer-events:none;';
+    root.appendChild(c);
+    const ctx = c.getContext('2d');
+    const fps = opt.fps ?? 30;
+    if (!Number.isFinite(fps) || fps <= 0) throw new Error('fxCanvas fps 必须为正数');
+    let lastSlot = null;
+    return { render(rt) {
+      const slot = Math.floor(rt * fps);
+      if (slot === lastSlot) return;
+      lastSlot = slot;
+      ctx.clearRect(0, 0, W, H);
+      // 同一 slot 使用同一个规范时间；预览小数时刻与逐帧导出不能取决于首次采样。
+      opt.draw(ctx, slot / fps, W, H);
+    }, el: c };
+  }
+
+  /* ---------- 颗粒纸纹：grain(canvas helper 的 draw) ----------
+     静态纸纹：seed 不随时变化 —— 画面每帧一致（零时域噪声）。
+     ⚠ 勿改成随时间变图案：那会把等效 bitrate 推高约 6 倍，且观感是"沙沙闪"，
+       不是纸的纤维（promo-film 的教训：颗粒是质感，不是运动）。 */
+  function grain(ctx, t, alpha = 0.04, seed = 7) {
+    const rnd = mulberry(seed * 131);
+    const step = Math.max(2, Math.round(W / 480));
+    for (let x = 0; x < W; x += step) {
+      for (let y = 0; y < H; y += step) {
+        if (rnd() < 0.16) {
+          ctx.fillStyle = `rgba(${rnd() < .5 ? '255,255,255' : '10,20,14'},${alpha})`;
+          ctx.fillRect(x, y, step, step);
+        }
+      }
+    }
+  }
+
+  /* ---------- 微运镜：dolly(el, {x, y, k, from, dur, ease}) ----------
+     from(相对秒)+dur(相对秒) 之外永远停死 —— 0.02px/帧以下的运动不许存在。
+     返回 {render(rt), moving:0..1}；moving 随 render 更新，供 camBlur 用。 */
+  function dolly(el, o) {
+    const from = o.from ?? 0, dur = o.dur ?? 0.6;
+    const st = { moving: 0 };
+    return { render(rt) {
+      const p = Math.max(0, Math.min(1, (rt - from) / dur));
+      const f = p >= 1 ? 1 : eInOut(p, o.ease || 3);
+      st.moving = p >= 1 || p <= 0 ? 0 : 1;
+      const scale = o.k == null ? 1 : (o.k0 != null ? o.k0 + (o.k - o.k0) * f : o.k);
+      const dx = (o.x || 0) * f, dy = (o.y || 0) * f;
+      if (!o.k && !o.x && !o.y) { el.style.transform = 'none'; return; }
+      el.style.transformOrigin = o.origin || '50% 50%';
+      el.style.transform = p >= 1
+        ? `translate(${o.x || 0}px, ${o.y || 0}px) scale(${scale})`   // 停死：固定终值，不再逐帧写
+        : `translate(${dx}px, ${dy}px) scale(${scale})`;
+    }, moving: st };
+  }
+
+  /* ---------- 速度模糊：camBlur(moving, arrive, 0..1) ----------
+     停稳时必须恰好 0 并退回 none（blur(0px) ≠ none：前者常驻一层滤镜，静止段恒糊）。 */
+  function camBlur(moving, arrive, base = 2.2, kick = 10) {
+    const b = moving * base + arrive * kick;
+    return b > 0.4 ? b : 0;                    // 0 → 调用方写 'none'
+  }
+
+  /* ---------- 光斑呼吸（无边缘 → 允许 ≤0.1px/帧 的慢漂） ---------- */
+  function breathe(ctx, { x, y, r, hue = '20,122,58', amp = r * .04, speed = .25, alpha = .07 }, rt, off = 0) {
+    const g = ctx.createRadialGradient(x + Math.sin(rt * speed + off) * amp, y + Math.cos(rt * speed * .8 + off) * amp, 0, x, y, r);
+    g.addColorStop(0, `rgba(${hue},${alpha})`); g.addColorStop(1, `rgba(${hue},0)`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+
+
+  /* ══════════════════════════════════════════════════════════════
+     以下手法移植自 guizang-product-video-skill 的 assets/fx-lab/
+     （字符场 / 粒子汇聚 / 发光地平线 / 环绕 / 镜头表），
+     全部保持「t 的纯函数」，不依赖上一帧。
+     ══════════════════════════════════════════════════════════════ */
+
+  /* 字符场：字符亮度跟随一张移动的噪声场（来源字符应取自内容本身：命令、文件名、输出） */
+  function glyphField(canvas, opt = {}) {
+    const ctx = canvas.getContext('2d');
+    const source = opt.source || '01';
+    const cw = (opt.cell && opt.cell[0]) || 14, ch = (opt.cell && opt.cell[1]) || 24;
+    const font = opt.font || '500 16px "SF Mono",ui-monospace,monospace';
+    const color = opt.color || [70, 96, 80];
+    const max = opt.max == null ? .5 : opt.max, threshold = opt.threshold == null ? .42 : opt.threshold;
+    const clearCenter = opt.clearCenter == null ? .85 : opt.clearCenter;
+    const W2 = canvas.width, H2 = canvas.height;
+    const cols = Math.ceil(W2 / cw), rows = Math.ceil(H2 / ch);
+    const h = (x, y) => { const s2 = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s2 - Math.floor(s2); };
+    const noise = (x, y) => {
+      const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+      const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+      const a = h(xi, yi), b = h(xi + 1, yi), c2 = h(xi, yi + 1), d = h(xi + 1, yi + 1);
+      return a + (b - a) * u + (c2 - a) * v + (a - b - c2 + d) * u * v;
+    };
+    return function draw(t, fade) {
+      fade = fade == null ? 1 : fade;
+      ctx.clearRect(0, 0, W2, H2); ctx.font = font; ctx.textBaseline = 'top';
+      for (let r = 0; r < rows; r++) for (let c2 = 0; c2 < cols; c2++) {
+        const n = noise(c2 * .08 + t * .35, r * .12 - t * .5) * .7 + noise(c2 * .23 - t, r * .3) * .3;
+        const dx = (c2 * cw - W2 / 2) / (W2 / 2), dy = (r * ch - H2 / 2) / (H2 / 2);
+        const centre = Math.max(0, 1 - Math.sqrt(dx * dx * .6 + dy * dy));
+        const a = Math.max(0, n - threshold) * 1.5 * (1 - centre * clearCenter) * fade;
+        if (a < .03) continue;
+        ctx.fillStyle = 'rgba(' + color[0] + ',' + color[1] + ',' + color[2] + ',' + Math.min(max, a) + ')';
+        ctx.fillText(source[(c2 + r * cols + Math.floor(t * 12) * (1 + (r % 3))) % source.length], c2 * cw, r * ch);
+      }
+    };
+  }
+
+  /* 粒子汇聚 / 飞散：2D 透视投影的条纹场（z 前进 → 向画面外冲），确定性 */
+  function streaks(canvas, opt = {}) {
+    const ctx = canvas.getContext('2d');
+    const W2 = canvas.width, H2 = canvas.height;
+    const count = opt.count || 420, depth = opt.depth || 1200;
+    const color = opt.color || [24, 60, 40];
+    const radius = opt.radius || 820, v0 = opt.v0 == null ? 160 : opt.v0, accel = opt.accel == null ? 60 : opt.accel;
+    const fov = opt.fov || 620;
+    let seed = opt.seed || 11;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const P = [];
+    for (let i = 0; i < count; i++) {
+      const a = rnd() * Math.PI * 2, r = 30 + Math.pow(rnd(), .7) * radius;
+      P.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * .8, z: rnd() * depth, b: .35 + rnd() * .65 });
+    }
+    const dist = t => v0 * t + accel * t * t * t * t;
+    const speed = t => v0 + 4 * accel * t * t * t;
+    return function draw(t, fade) {
+      fade = fade == null ? 1 : fade;
+      ctx.clearRect(0, 0, W2, H2);
+      ctx.__W2 = W2; ctx.__H2 = H2;
+      const d = dist(t), streak = Math.min(700, .045 * speed(t) + 4);
+      const cx = W2 / 2, cy = H2 / 2;
+      P.forEach(p => {
+        const z = ((p.z - d) % depth + depth) % depth;
+        const k = fov / (z + 40);
+        const tail = Math.min(streak * (1 - z / depth) * 1.6 + 2, z + 4);
+        const k2 = fov / (z + tail + 40);
+        const x1 = cx + p.x * k, y1 = cy + p.y * k;
+        const x2 = cx + p.x * k2, y2 = cy + p.y * k2;
+        const a = p.b * Math.pow(1 - z / depth, 1.4) * fade;
+        if (a < .02) return;
+        ctx.strokeStyle = 'rgba(' + color[0] + ',' + color[1] + ',' + color[2] + ',' + (a * .9) + ')';
+        ctx.lineWidth = Math.max(.6, 2.4 * k);
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      });
+    };
+  }
+
+
+  /* ctx 版条纹场：用在 fxCanvas 的 draw 回调里（与其它层叠加，不负责 clear） */
+  function streaksInto(ctx, t, opt = {}) {
+    const W2 = opt.w || ctx.canvas.width, H2 = opt.h == null ? ctx.canvas.height : opt.h;
+    const count = opt.count || 320, depth = opt.depth || 1200;
+    const color = opt.color || [30, 96, 60];
+    const radius = opt.radius || 820, v0 = opt.v0 == null ? 120 : opt.v0, accel = opt.accel == null ? 26 : opt.accel;
+    const fov = opt.fov || 620, fade = opt.fade == null ? 1 : opt.fade;
+    if (!ctx.__P || ctx.__Pn !== count || ctx.__seed !== (opt.seed || 11)) {
+      let seed = opt.seed || 11;
+      const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      const P = [];
+      for (let i = 0; i < count; i++) {
+        const a = rnd() * Math.PI * 2, r = 30 + Math.pow(rnd(), .7) * radius;
+        P.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * .8, z: rnd() * depth, b: .35 + rnd() * .65 });
+      }
+      ctx.__P = P; ctx.__Pn = count; ctx.__seed = opt.seed || 11;
+    }
+    const P = ctx.__P;
+    const d = v0 * t + accel * t * t * t * t;
+    const sp = v0 + 4 * accel * t * t * t;
+    const streak = Math.min(700, .045 * sp + 4);
+    const cx = W2 / 2, cy = H2 / 2;
+    for (let i = 0; i < P.length; i++) {
+      const p = P[i];
+      const z = ((p.z - d) % depth + depth) % depth;
+      const k = fov / (z + 40), tail = Math.min(streak * (1 - z / depth) * 1.6 + 2, z + 4);
+      const k2 = fov / (z + tail + 40);
+      const a = p.b * Math.pow(1 - z / depth, 1.4) * fade;
+      if (a < .02) continue;
+      ctx.strokeStyle = 'rgba(' + color[0] + ',' + color[1] + ',' + color[2] + ',' + (a * .9) + ')';
+      ctx.lineWidth = Math.max(.6, 2.4 * k);
+      ctx.beginPath();
+      ctx.moveTo(cx + p.x * k, cy + p.y * k);
+      ctx.lineTo(cx + p.x * k2, cy + p.y * k2);
+      ctx.stroke();
+    }
+  }
+
+  /* 发光地平线：底部一条细线 + 向上扩散的辉光（贵感很大一部分来自它） */
+  function horizon(ctx, t, opt = {}) {
+    const W2 = ctx.canvas.width, H2 = ctx.canvas.height;
+    const y = opt.y == null ? H2 * .74 : opt.y;
+    const hue = opt.hue || '20,122,58';
+    const amp = opt.amp == null ? 10 : opt.amp;
+    const yy = y + Math.sin(t * .35) * amp;
+    const g = ctx.createLinearGradient(0, yy - 190, 0, yy + 26);
+    g.addColorStop(0, 'rgba(' + hue + ',0)');
+    g.addColorStop(1, 'rgba(' + hue + ',' + (opt.alpha == null ? .16 : opt.alpha) + ')');
+    ctx.fillStyle = g; ctx.fillRect(0, yy - 190, W2, 216);
+    ctx.fillStyle = 'rgba(' + hue + ',' + (opt.lineAlpha == null ? .5 : opt.lineAlpha) + ')';
+    ctx.fillRect(0, yy, W2, 2);
+    // 透视网格（消失点在上）
+    ctx.strokeStyle = 'rgba(' + hue + ',.12)'; ctx.lineWidth = 1;
+    for (let i = -8; i <= 8; i++) {
+      ctx.beginPath();
+      ctx.moveTo(W2 / 2 + i * 26, yy);
+      ctx.lineTo(W2 / 2 + i * 260, H2);
+      ctx.stroke();
+    }
+  }
+
+  /* 环绕：一圈小点沿轨道转（用于"并行/分工"这类语义） */
+  function orbit(ctx, t, opt = {}) {
+    const W2 = ctx.canvas.width, H2 = ctx.canvas.height;
+    const cx = opt.x == null ? W2 / 2 : opt.x, cy = opt.y == null ? H2 / 2 : opt.y;
+    const r = opt.r || 260, n = opt.n || 24, hue = opt.hue || '20,122,58';
+    for (let i = 0; i < n; i++) {
+      const a = t * (opt.speed == null ? .5 : opt.speed) + i / n * Math.PI * 2;
+      const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * .42;
+      const s2 = 3 + Math.sin(a) * 1.5;
+      ctx.fillStyle = 'rgba(' + hue + ',' + (.22 + .5 * (Math.sin(a) * .5 + .5)) + ')';
+      ctx.beginPath(); ctx.arc(x, y, s2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  /* 镜头表：一行一个镜头（at 到位帧·秒，move 走位时长，px/py 看哪里，k 多近，cx/cy 落在屏幕哪）
+     到位的段落**不写 transform**（停死）；moving 供运动模糊用。 */
+  function cameraShot(shots, t, opt = {}) {
+    const O = opt.origin || '50% 50%';
+    let cur = shots[0], prev = shots[0], p = 1;
+    for (let i = 0; i < shots.length; i++) {
+      const s2 = shots[i];
+      const start = s2.at - (s2.move || 0);
+      if (t >= start) { prev = shots[Math.max(0, i - 1)]; cur = s2; p = s2.move ? Math.min(1, (t - start) / s2.move) : 1; }
+    }
+    const e2 = p >= 1 ? 1 : eInOut(p, 3);
+    const lerp2 = (a, b) => a + (b - a) * e2;
+    return {
+      px: lerp2(prev.px, cur.px), py: lerp2(prev.py, cur.py),
+      k: lerp2(prev.k == null ? 1 : prev.k, cur.k == null ? 1 : cur.k),
+      cx: lerp2(prev.cx == null ? 960 : prev.cx, cur.cx == null ? 960 : cur.cx),
+      cy: lerp2(prev.cy == null ? 540 : prev.cy, cur.cy == null ? 540 : cur.cy),
+      moving: p >= 1 ? 0 : 1,
+      apply(el) {
+        const transform = 'translate(' + (this.cx - this.px * this.k) + 'px,' + (this.cy - this.py * this.k) + 'px) scale(' + this.k + ')';
+        el.style.transformOrigin = O;
+        // 停死是终值不变，不是“曾经停过就再也不写”；直达另一个保持段也必须更新。
+        if (el.style.transform !== transform) el.style.transform = transform;
+      },
+    };
+  }
+
+  /* ---------- 节拍收口检查表（给作者看的，纯注释语义） ----------
+     每场最后 0.7–1.0s 里，最后一个动作应已完成且画面稳住 —— vh stills 的
+     中点帧之外，你应另看每个 end-0.3 的帧确认收口。 */
+  return { eOut, eInOut, mulberry, fxCanvas, grain, breathe, dolly, camBlur,
+           glyphField, streaks, streaksInto, horizon, orbit, cameraShot };
+})();
+window.FX = FX;
+
+
+
+/* ============================================================
+   UI 助手（所有项目可用，vh enhance 注入）：重画的窗口 / 代码行 / 车道
+   —— 参考 promo-film「那台机器是真的」：按真实比例画窗口，不是放大截图
+   ============================================================ */
+function windowMock(root, x, y, w, h, title){
+  const win = abs(mk('div',''), x, y, w, h);
+  win.style.cssText += 'box-sizing:border-box;background:var(--card);border:1px solid var(--line);' +
+    'border-radius:18px;box-shadow:var(--shadow-md);overflow:hidden;position:absolute';
+  const bar = mk('div','');
+  bar.style.cssText = 'height:44px;background:var(--neutral-soft);border-bottom:1px solid var(--line);' +
+    'display:flex;align-items:center;gap:8px;padding:0 16px;font-family:var(--font-mono);font-size:18px;color:var(--ink2)';
+  ['#E5B4A4','#D9D9C7','#B4D2B8'].forEach(c => {
+    const d = mk('div',''); d.style.cssText = 'width:11px;height:11px;border-radius:50%;background:' + c; bar.appendChild(d);
+  });
+  const t = mk('span','', title || ''); t.style.marginLeft = '10px'; bar.appendChild(t);
+  win.appendChild(bar);
+  root.appendChild(win);
+  return { el: win, bar };
+}
+function codeLine(parent, y, text, tone){
+  const c = mk('div','', '');
+  c.textContent = text;          // ⚠ 必须走 textContent：mk() 是 innerHTML，会把 <input …> 当标签渲染
+  const color = tone === 'warn' ? 'var(--warn)' : tone === 'ok' ? 'var(--accent)' : 'var(--ink)';
+  c.style.cssText = 'position:absolute;left:26px;top:' + y + 'px;font-family:var(--font-mono);font-size:23px;color:' + color + ';white-space:pre';
+  parent.appendChild(c);
+  return c;
+}
+/* 车道：三条并行，用画布上移动的虚线表达"同时在跑"（纯函数，可重跑） */
+function lanes(ctx, t, y0, n, w, color){
+  ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.setLineDash([26, 22]);
+  for (let i = 0; i < n; i++){
+    const y = y0 + i * 46;
+    const off = -((t * 160 + i * 40) % 48);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y);
+    ctx.lineDashOffset = off; ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+function glyphLayer(root, opt){
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  c.style.cssText = 'position:absolute;inset:0;pointer-events:none';
+  root.appendChild(c);
+  // 自动跟随主题：默认取 --ink3（三级墨）作为字符颜色，透明度压到很低
+  const o = Object.assign({ max: .09, threshold: .66 }, opt || {});
+  if (!o.color) {
+    const raw = getComputedStyle(root).getPropertyValue('--ink3').trim();
+    const m = raw.match(/^#([0-9a-f]{6})$/i);
+    o.color = m ? [parseInt(m[1].slice(0,2),16), parseInt(m[1].slice(2,4),16), parseInt(m[1].slice(4,6),16)] : [140,140,130];
+  }
+  return window.FX.glyphField(c, o);
+}
+window.VH_UI = { windowMock, codeLine, lanes, glyphLayer };
+
+/* ══════════════════════════════════════════════════════════════
+   一镜到底：连续主体 + 镜头表 + 文案交接
+   用法（在 scenes.src.js 的一场里）：
+     const st = VH_UI.oneTake(root, [
+       { at: 0,  move: 0,  px: 960, py: 540, k: 1.00, cx: 960, cy: 540 },   // 起始
+       { at: 4,  move: 3,  px: 1400, py: 430, k: 1.35, cx: 700, cy: 520 },  // 推到主体右侧
+       { at: 9,  move: 0,  px: 1400, py: 430, k: 1.35, cx: 700, cy: 520 },  // 停死（保持）
+     ]);
+     // st.world 是「世界层」，把主体都塞进去；st.apply(rt) 每帧调用
+     // 文案放在 world 外面，避免跟着镜头放大（promo-film 的规矩：UI 特写不缩放文字）
+   ══════════════════════════════════════════════════════════════ */
+function oneTake(root, shots, opt = {}) {
+  const world = mk('div','');
+  world.style.cssText = 'position:absolute;inset:0;will-change:transform';
+  root.appendChild(world);
+  return {
+    world,
+    /* 文案择边：主体被推到右边 → 文案放左；推到左边 → 文案放右。
+       用法：const cap = st.captionSide(rt)  → 'left' | 'right' */
+    captionSide(rt, extra) {
+      const cam = cameraShotValue(shots, rt, opt);
+      // 主体中心在世界中的 x，经镜头变换后的屏幕位置
+      const w = (typeof window !== 'undefined' && window.W) || 1920;
+      const fx0 = (extra && extra.focusX != null) ? extra.focusX
+        : (opt.focusX == null ? w / 2 : opt.focusX);
+      const focusX = fx0 * cam.k + cam.tx;
+      return focusX > w * 0.573 ? 'left' : 'right';
+    },
+    apply(rt) {
+      // 镜头表 → 世界层变换；到位后不逐帧写（停死）
+      const cam = cameraShotValue(shots, rt, opt);
+      const transform = `translate(${cam.tx}px, ${cam.ty}px) scale(${cam.k})`;
+      if (world.style.transform !== transform) world.style.transform = transform;
+      world.style.transformOrigin = '0 0';
+      return cam;
+    },
+  };
+}
+
+/* 镜头表取值：at=到位时刻，move=走位时长（秒），px/py=看哪里，k=多近，cx/cy=落在屏幕哪 */
+function cameraShotValue(shots, t, opt = {}) {
+  // 世界尺寸默认跟随当前画布（竖屏/方屏都能跑；别写死 1920×1080）
+  const W0 = (typeof window !== 'undefined' && window.W) || 1920;
+  const H0 = (typeof window !== 'undefined' && window.H) || 1080;
+  const vw = opt.vw || W0, vh = opt.vh || H0;   // 世界尺寸（主体坐标系，跟随画布）
+  const pad = opt.pad == null ? 60 : opt.pad;      // 落点安全边
+  let prev = shots[0], cur = shots[0], p = 1;
+  for (let i = 0; i < shots.length; i++) {
+    const s2 = shots[i];
+    const start = (s2.at || 0) - (s2.move || 0);
+    if (t >= start) { prev = shots[Math.max(0, i - 1)]; cur = s2; p = s2.move ? Math.min(1, (t - start) / s2.move) : 1; }
+  }
+  const e2 = p >= 1 ? 1 : (p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+  const L = (a, b) => (a == null ? b : a) + ((b == null ? a : b) - (a == null ? b : a)) * e2;
+
+  // ① 缩放限幅：太近会糊、太远主体太小
+  let k = Math.max(1, Math.min(4, L(prev.k == null ? 1 : prev.k, cur.k == null ? 1 : cur.k)));
+  // ② 取景点夹在世界内：否则会看到世界外的空白
+  const halfW = (vw / 2) / k, halfH = (vh / 2) / k;
+  let px = L(prev.px == null ? vw / 2 : prev.px, cur.px == null ? vw / 2 : cur.px);
+  let py = L(prev.py == null ? vh / 2 : prev.py, cur.py == null ? vh / 2 : cur.py);
+  px = Math.max(halfW, Math.min(vw - halfW, px));
+  py = Math.max(halfH, Math.min(vh - halfH, py));
+  // ③ 落点夹在安全区
+  let cx = Math.max(pad, Math.min(vw - pad, L(prev.cx == null ? vw / 2 : prev.cx, cur.cx == null ? vw / 2 : cur.cx)));
+  let cy = Math.max(pad, Math.min(vh - pad, L(prev.cy == null ? vh / 2 : prev.cy, cur.cy == null ? vh / 2 : cur.cy)));
+
+  // ④ 平移后再整体夹回：世界放大后不能露出画面外
+  let tx = cx - px * k, ty = cy - py * k;
+  tx = Math.min(0, Math.max(vw - vw * k, tx));
+  ty = Math.min(0, Math.max(vh - vh * k, ty));
+
+  return { k, tx, ty, held: p >= 1, px, py, cx, cy };
+}
+
+/* 文案交接：一组文案按 beats 依次淡入淡出（不随镜头缩放） */
+function beats(items) {
+  // items: [{ el, in: 1.0, out: 4.5 }]（秒，场景内相对时间）
+  return (rt) => {
+    for (const it of items) {
+      const pin = it.in == null ? 1 : P(rt, it.in, it.dur || .6);
+      const pout = it.out == null ? 0 : P(rt, it.out, it.dur || .6);
+      const a = Math.min(pin, 1 - pout);
+      it.el.style.opacity = Math.max(0, a);
+      it.el.style.transform = `translateY(${(1 - eOut3(pin)) * 18}px)`;
+      it.el.style.display = a <= 0.001 ? 'none' : 'block';
+    }
+  };
+}
+
+window.VH_UI = Object.assign(window.VH_UI || {}, { oneTake, cameraShotValue, beats });
+
+/* ══════════════════════════════════════════════════════════════
+   stack：声明式竖直排布（自动算高度与间距，不可能挤压）
+   为什么需要：场景里手写 abs(el, x, y, w, h) 时，y 与 h 全靠人算；
+   一旦标题字号变大或说明换行，就会压住下一块（真实事故：4 行清单压住脚注）。
+   用法：
+     const stack = VH_UI.stack(root, { x: 140, y: 330, w: 1640, gap: 18 });
+     stack.row({ title:'账号主体与结算通道', desc:'清单外访问可能致封禁', tag:'一手' });
+     stack.row({ title:'数据经手方', desc:'请求每多一台服务器…', tag:'结构事实' });
+     stack.finish();   // 返回总高度；之后可用 stack.bottom 放脚注
+   ══════════════════════════════════════════════════════════════ */
+function stack(root, opt = {}) {
+  const x = opt.x == null ? 140 : opt.x;
+  const y0 = opt.y == null ? 300 : opt.y;
+  const w = opt.w == null ? 1640 : opt.w;
+  const gap = opt.gap == null ? 18 : opt.gap;
+  const titleSize = opt.titleSize || 38;
+  const descSize = opt.descSize || 24;
+  const lineGap = opt.lineGap == null ? 10 : opt.lineGap;
+  const els = [];
+  let cursor = y0;
+  const api = {
+    els,
+    get bottom() { return cursor; },
+    row({ title, desc, tag, accent }) {
+      const rowEl = mk('div', '');
+      rowEl.style.cssText = 'position:absolute;left:' + x + 'px;top:' + cursor + 'px;width:' + w + 'px';
+      // 标题行（含可选标签）
+      const titleEl = mk('div', '', title || '');
+      titleEl.style.cssText = 'font-size:' + titleSize + 'px;font-weight:700;line-height:' + Math.round(titleSize * 1.35) + 'px;' +
+        (accent ? 'color:var(--accent);' : '');
+      rowEl.appendChild(titleEl);
+      // 说明行
+      if (desc) {
+        const descEl = mk('div', '', desc);
+        descEl.style.cssText = 'font-size:' + descSize + 'px;color:var(--ink2);margin-top:' + lineGap + 'px;line-height:' + Math.round(descSize * 1.6) + 'px';
+        rowEl.appendChild(descEl);
+      }
+      root.appendChild(rowEl);
+      // 高度由内容撑开（不写死），再用 offsetHeight 拿真实值
+      const h = rowEl.offsetHeight || (titleSize * 1.35 + (desc ? descSize * 1.6 + lineGap : 0));
+      cursor += h + gap;
+      els.push(rowEl);
+      return rowEl;
+    },
+    /* 放一个自由元素（不会与已有行重叠）：返回它可用的 y */
+    slot(extraGap = 0) { return cursor + extraGap; },
+    /* 结束：返回总底边 */
+    finish() { return cursor; },
+  };
+  return api;
+}
+
+window.VH_UI = Object.assign(window.VH_UI || {}, { stack });
+
+/* ══════════════════════════════════════════════════════════════
+   safeArea：画面安全区（横竖屏都算对）
+   为什么需要：配方按 H*0.8 之类比例摆卡片，横屏刚好、竖屏就被字幕条压住
+   （真实事故：one-take 竖屏下字幕条压掉卡片最后两行与进度条）。
+   字幕条的位置由引擎 PRESET.subBottom 决定，直接问引擎，别猜。
+   用法：const S = VH_UI.safeArea();  S.top / S.bottom / S.h / S.pad / S.W / S.H
+   ══════════════════════════════════════════════════════════════ */
+function safeArea() {
+  const W2 = (typeof window !== 'undefined' && window.W) || 1920;
+  const H2 = (typeof window !== 'undefined' && window.H) || 1080;
+  let pad = Math.round(W2 * 0.07), top = 0, bottom = H2 * 0.86;
+  // 引擎里的 LAYOUT 在同一作用域（gen.mjs 生成时就在上面）
+  try {
+    if (typeof LAYOUT !== 'undefined' && LAYOUT) {
+      pad = LAYOUT.pad;
+      top = LAYOUT.safeTop || 0;
+      // 字幕条从 H - subBottom 往上长；预留两行高度，免得正文贴住字幕
+      const subBand = (typeof P0 !== 'undefined' && P0 && P0.subBottom) ? P0.subBottom : 52;
+      const subFont = (typeof P0 !== 'undefined' && P0 && P0.subFont) ? P0.subFont : 40;
+      // 字幕最多两行；行高按实测 ≈ 2×字号，再留 8px 余量
+      bottom = H2 - subBand - subFont * 4 - 8;
+    }
+  } catch {}
+  return { W: W2, H: H2, pad, top, bottom, h: Math.max(0, bottom - top) };
+}
+window.VH_UI = Object.assign(window.VH_UI || {}, { safeArea });
+
+/* ══════════════════════════════════════════════════════════════
+   真实素材：图片 / 视频 / 图表
+   为什么需要：纯 CSS 画的框和字"能看懂"，但观众不会"相信"。
+   讲产品就该有产品截图，讲数据就该有真图，讲过程就该有录屏。
+   ══════════════════════════════════════════════════════════════ */
+
+/* 视频：确定性播放（每帧都由 renderAt 决定，不能靠 video 自己走）。
+   用法：const v = VH_UI.videoEl(root, 'assets/demo.mp4', x, y, w, h);
+        v.seek(rt, 起点秒)；同一时间点永远同一帧。 */
+function videoEl(root, src, x, y, w, h, opt = {}) {
+  const box = abs(mk('div',''), x, y, w, h);
+  box.style.cssText += 'overflow:hidden;border-radius:' + (opt.radius == null ? 18 : opt.radius) + 'px;' +
+    'background:var(--card);border:1px solid var(--line)' + (opt.shadow === false ? '' : ';box-shadow:var(--shadow-md)');
+  const v = document.createElement('video');
+  v.src = src; v.muted = true; v.playsInline = true; v.preload = 'auto';
+  v.style.cssText = 'width:100%;height:100%;object-fit:' + (opt.fit || 'cover') + ';display:block';
+  box.appendChild(v);
+  root.appendChild(box);
+   let pending = null, target = null, cancelPending = null;
+   const tasks = window.__vhMediaPending || (window.__vhMediaPending = new Set());
+   function seekTo(want) {
+     if (pending && target === want) return pending;
+     // 预览拖动可能在解码前再次 seek；旧目标作废，不能留下永不完成的屏障。
+     if (cancelPending) cancelPending();
+     target = want;
+     const end = Number.isFinite(v.duration) ? Math.max(0, v.duration - .001) : want;
+     if (!v.seeking && v.readyState >= 2 && Math.abs(v.currentTime - Math.min(want, end)) <= .000001) return Promise.resolve();
+     const task = new Promise((resolve, reject) => {
+       let timer;
+       const cleanup = () => {
+         clearTimeout(timer);
+         v.removeEventListener('seeked', done);
+         v.removeEventListener('loadeddata', done);
+         v.removeEventListener('loadedmetadata', setTarget);
+         v.removeEventListener('error', fail);
+       };
+       const fail = () => { cleanup(); reject(new Error('视频素材未能就绪')); };
+       cancelPending = () => { cleanup(); resolve(); };
+       const done = () => {
+         // duration 可能尚未就绪；结尾停在最后一帧而非 seek 到 EOS 黑帧。
+         const end = Number.isFinite(v.duration) ? Math.max(0, v.duration - .001) : want;
+         if (v.seeking || v.readyState < 2 || Math.abs(v.currentTime - Math.min(want, end)) > .002) return;
+         cleanup(); resolve();
+       };
+       const setTarget = () => {
+         const end = Number.isFinite(v.duration) ? Math.max(0, v.duration - .001) : want;
+         try { v.pause(); v.currentTime = Math.min(want, end); done(); } catch { fail(); }
+       };
+       v.addEventListener('seeked', done);
+       v.addEventListener('loadeddata', done);
+       v.addEventListener('error', fail);
+       timer = setTimeout(fail, opt.timeout || 12000);
+       if (v.error) fail();
+       else if (v.readyState >= 1) setTarget();
+       else v.addEventListener('loadedmetadata', setTarget, { once: true });
+     });
+     pending = task;
+     tasks.add(task);
+     task.then(() => { tasks.delete(task); if (pending === task) { pending = null; cancelPending = null; } }, () => {
+       tasks.delete(task); if (pending === task) { pending = null; cancelPending = null; }
+     });
+     return task;
+   }
+   return {
+    el: box, video: v,
+    /* seek 到「场景内第 rt 秒」对应的视频位置；seeked 之前保留上一帧，不闪白 */
+    seek(rt, from = 0) {
+      const want = Math.max(0, (opt.offset || 0) + from + rt * (opt.speed ?? 1));
+      if (!Number.isFinite(want)) throw new Error('视频 seek 时间必须为有限数');
+      return seekTo(want);
+    },
+    /* 播到结尾后定住（不要循环回第一帧，观众会以为跳回去） */
+    freezeAt(t) {
+      if (!Number.isFinite(t)) throw new Error('视频 seek 时间必须为有限数');
+      return seekTo(Math.max(0, t));
+    },
+  };
+}
+
+/* 图表：把 SVG 字符串塞进一个元素里（配合 lib/assets.mjs 的 chartSvg） */
+function chartEl(root, svg, x, y, w, h, opt = {}) {
+  const box = abs(mk('div',''), x, y, w, h);
+  box.style.cssText += 'color:' + (opt.color || 'var(--accent)');
+  box.innerHTML = svg;
+  root.appendChild(box);
+  return box;
+}
+
+/* 截图 + 标注：真截图放进来，框出"看这里"，比任何示意图都可信 */
+function shotEl(root, src, x, y, w, h, opt = {}) {
+  const box = abs(mk('div',''), x, y, w, h);
+  box.style.cssText += 'overflow:hidden;border-radius:' + (opt.radius == null ? 16 : opt.radius) + 'px;' +
+    'background:var(--card);border:1px solid var(--line)';
+  /* ⚠ 必须用 bgImg：cssText = 'background:...' 会清掉 abs() 设的尺寸 */
+  if (typeof bgImg === 'function') bgImg(box, src, opt.fit || 'cover');
+  else { box.style.backgroundImage = 'url(' + src + ')'; box.style.backgroundSize = 'cover'; box.style.backgroundPosition = 'center'; }
+  root.appendChild(box);
+
+  let mark = null;
+  if (opt.mark && opt.mark.length === 4) {
+    const [mx, my, mw, mh] = opt.mark;               // 相对 box 的 0–1 比例
+    mark = mk('div','');
+    mark.style.cssText = 'position:absolute;left:' + (mx * 100) + '%;top:' + (my * 100) + '%;' +
+      'width:' + (mw * 100) + '%;height:' + (mh * 100) + '%;border:3px solid var(--accent);border-radius:10px;' +
+      'box-shadow:0 0 0 9999px rgba(8,14,10,.42);pointer-events:none';
+    box.appendChild(mark);
+    if (opt.tag) {
+      const tg = mk('div','', opt.tag);
+      tg.style.cssText = 'position:absolute;left:' + (mx * 100) + '%;top:calc(' + (my * 100) + '% - 46px);' +
+        'background:var(--accent);color:#fff;font-size:20px;font-weight:700;padding:6px 16px;border-radius:999px;white-space:nowrap';
+      box.appendChild(tg);
+    }
+  }
+  return { el: box, mark };
+}
+
+window.VH_UI = Object.assign(window.VH_UI || {}, { videoEl, chartEl, shotEl });
+
+/* ══════════════════════════════════════════════════════════════
+   字幕语义断行：浏览器随手断行会把中文断在"的/了"前、英文断在词中间。
+   这里在引擎 renderSubs 之后接管：按实际字幕宽度无损断行，不能为了两行删字。
+   为什么放在注入块里：skill 的 engine.tpl.html 是共用的，不能改本体。
+   ══════════════════════════════════════════════════════════════ */
+function subtitleBreaker(maxW) {
+  const budget = maxW || 18;
+  return function draw(text) {
+    if (!(budget > 0) || !Number.isFinite(budget)) throw new Error('字幕宽度必须为有限正数');
+    /* 视觉宽度：中文 1、ASCII 0.55。比按字符数准（"PostgreSQL" ≠ 10 个中文字宽） */
+    const vw = (s2) => {
+      let n = 0;
+      for (const ch of String(s2)) {
+        const c = ch.codePointAt(0);
+        n += (c >= 0x2e80 && c <= 0x9fff) || (c >= 0x3000 && c <= 0x303f) || (c >= 0xff00 && c <= 0xffef) ? 1 : 0.55;
+      }
+      return n;
+    };
+    const STRONG = /[。！？；]/, WEAK = /[，、：,;]/;
+    const NO_START = /^[，。、；：！？,.;:!?）】」』"'”’]/;
+    const str = String(text).replace(/\s+/g, ' ').trim();
+    if (vw(str) <= budget) return [str];
+    const units = [];
+    for (const m of str.matchAll(/[A-Za-z0-9][A-Za-z0-9.\-/%]*|\s+|./gu)) units.push(m[0]);
+    const lines = [];
+    let cur = '';
+    const flush = (cutAt) => {
+      let line = cur.slice(0, cutAt), rest = cur.slice(cutAt);
+      while (rest && NO_START.test(rest[0])) { line += rest[0]; rest = rest.slice(1); }
+      if (line.trim()) lines.push(line.trim());
+      cur = rest;
+    };
+    for (const u of units) {
+      if (vw(u) > budget) {
+        if (cur.trim()) flush(cur.length);
+        let rest = u;
+        while (vw(rest) > budget) {
+          let k = 1;
+          while (k < rest.length && vw(rest.slice(0, k + 1)) <= budget) k++;
+          lines.push(rest.slice(0, k)); rest = rest.slice(k);
+        }
+        cur = rest; continue;
+      }
+      if (vw(cur + u) <= budget) { cur += u; continue; }
+      let cut = cur.length;
+      const pickLast = (re) => { for (let k = cur.length - 1; k >= 1; k--) if (re.test(cur[k])) return k + 1; return -1; };
+      const minCut = Math.max(2, Math.floor(cur.length / 3));
+      const c1 = pickLast(STRONG); if (c1 >= minCut) cut = c1;
+      if (cut === cur.length) { const c2 = pickLast(WEAK); if (c2 >= minCut) cut = c2; }
+      if (cut === cur.length) { const sp = cur.lastIndexOf(' '); if (sp >= minCut) cut = sp + 1; }
+      if (cut === cur.length && /^[A-Za-z0-9]/.test(u)) {
+        const w = cur.match(/[A-Za-z0-9][A-Za-z0-9.\-/%]*$/);
+        if (w && cut - w[0].length > 0) cut -= w[0].length;
+      }
+      if (cut <= 0) cut = cur.length;
+      flush(cut);
+      cur += u;
+    }
+    if (cur.trim()) {
+      lines.push(cur.trim());
+    }
+    return lines;
+  };
+}
+
+/* 接管字幕：包一层 renderSubs（引擎原函数还在，只是换掉断行方式） */
+(function patchSubs() {
+  if (typeof window === 'undefined') return;
+  const apply = () => {
+    if (typeof renderSubs !== 'function' || renderSubs.__breakered) return;
+    const orig = renderSubs;
+    let lastText = null, lastBudget = null, lastHtml = '';
+    const patched = function(t) {
+      const cur = (typeof SUBS !== 'undefined' ? SUBS : []).find(s2 => t >= s2.s && t < s2.e);
+      const box = window.__subbox;
+      if (!box) { orig(t); return; }
+      if (box.parentElement) box.parentElement.style.zIndex = '1000';
+      if (!cur) { box.style.opacity = 0; return; }
+      const style = getComputedStyle(box);
+      const available = Math.min(parseFloat(style.maxWidth) || window.W || 1920, window.W || 1920)
+        - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0) - 2;
+      const budget = window.__subBreakW || Math.max(1, Math.floor(available / (parseFloat(style.fontSize) || 40)) - 1);
+      if (cur.t !== lastText || budget !== lastBudget) {
+        const lines = subtitleBreaker(budget)(cur.t);
+        lastHtml = lines.map(l => '<span style="display:block;overflow-wrap:anywhere">' + l.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])) + '</span>').join('');
+        lastText = cur.t; lastBudget = budget;
+      }
+      if (box.__lastHtml !== lastHtml) { box.innerHTML = lastHtml; box.__lastHtml = lastHtml; }
+      // 句首/句尾不淡出：整句在 [s,e) 内持续可读，不让尾音仍在时文字先消失。
+      box.style.opacity = 1;
+    };
+    patched.__breakered = true;
+    patched.__lossless = true;
+    window.renderSubs = patched;
+    // 引擎内部若用局部名调用，兜一层全局钩子
+    try { renderSubs = patched; } catch {}
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply);
+  else setTimeout(apply, 0);
+})();
+window.VH_UI = Object.assign(window.VH_UI || {}, { subtitleBreaker });
+
+/* ══════════════════════════════════════════════════════════════
+   assetsReady()：等所有图片/视频真正解码完
+   为什么必须有：render.mjs 只等 document.fonts.ready，**不等图片**。
+   实测：给 <img> 设完 src 立刻读 naturalWidth 是 0（同步未加载），
+   首帧因此会截成空白；而成片后面的帧是好的 —— 观众看到的是"闪一下白"。
+   用法（渲染前调用一次）：await VH_UI.assetsReady()
+   ══════════════════════════════════════════════════════════════ */
+async function assetsReady(opt = {}) {
+  const timeout = opt.timeout ?? 15000;
+  if (!Number.isFinite(timeout) || timeout <= 0) throw new Error('素材等待 timeout 必须为正数');
+  const t0 = Date.now();
+  const imgs = [...document.images];
+  /* 从一条 background-image 里取出顶层 url(...)。
+     ⚠ 不能用 /url\(["']?([^"')]+)["']?\)/ 这种正则：data URI 里自带
+     SVG 滤镜引用 `filter='url(%23n)'`，正则钻进引号内部，把 `%23n` 当成一个
+     素材文件去加载 → ERR_FILE_NOT_FOUND → 每场都多一个假失败，
+     严格模式一律抛错（真实事故：7 场全用 bg(root) → 全片永远渲染不出来）。
+     正确做法：引号内的整段算一个 URL，不往引号里看；纯片段引用(#/ %23)不是资源，跳过。 */
+  const topLevelUrls = css => {
+    const found = [];
+    for (let i = 0; (i = css.indexOf('url(', i)) >= 0;) {
+      let j = i + 4;
+      while (j < css.length && /\s/.test(css[j])) j++;
+      const quote = css[j] === '"' || css[j] === "'" ? css[j] : null;
+      const start = quote ? j + 1 : j;
+      let end;
+      if (quote) { end = css.indexOf(quote, start); if (end < 0) end = css.length; }
+      else { end = css.indexOf(')', start); if (end < 0) end = css.length; }
+      const raw = css.slice(start, end).trim();
+      i = end + 1;
+      // `url(#mask)` / `url(%23mask)` 指向文档内的 SVG 定义，不是可加载的文件
+      if (raw && !raw.startsWith('#') && !/^%23/i.test(raw)) found.push(raw);
+    }
+    return found;
+  };
+  // 背景图：扫所有元素的 computed style（只扫带 background-image 的）
+  const bgUrls = new Set();
+  for (const el of document.querySelectorAll('*')) {
+    const bi = getComputedStyle(el).backgroundImage;
+    if (bi && bi !== 'none' && bi.includes('url(')) {
+      for (const u of topLevelUrls(bi)) bgUrls.add(u);
+    }
+  }
+  const vids = [...document.querySelectorAll('video')];
+
+  const waitEvent = (target, event, state) => new Promise(res => {
+    const current = state();
+    if (current) return res(current);
+    const done = e => {
+      clearTimeout(timer);
+      target.removeEventListener(event, done); target.removeEventListener('error', done);
+      res(e?.type === 'error' ? 'error' : state() || 'timeout');
+    };
+    const timer = setTimeout(done, timeout);
+    target.addEventListener(event, done, { once: true });
+    target.addEventListener('error', done, { once: true });
+  });
+  const waitImg = img => waitEvent(img, 'load', () => img.complete ? (img.naturalWidth > 0 ? 'ok' : 'error') : null);
+  const decodeImg = async img => {
+    if (!img.decode) return 'ok';
+    const remaining = timeout - (Date.now() - t0);
+    if (remaining <= 0) return 'timeout';
+    let timer;
+    try {
+      return await Promise.race([
+        img.decode().then(() => 'ok', () => 'error'),
+        new Promise(resolve => { timer = setTimeout(() => resolve('timeout'), remaining); }),
+      ]);
+    } catch { return 'error'; }
+    finally { clearTimeout(timer); }
+  };
+  const waitUrl = async (u) => {
+    const i = new Image();
+    i.src = u;
+    const status = await waitImg(i);
+    if (status !== 'ok') return status;
+    return decodeImg(i);
+  };
+  const waitVid = v => waitEvent(v, 'loadeddata', () => v.error ? 'error' : v.readyState >= 2 ? 'ok' : null);
+
+  const statuses = await Promise.all([
+    ...imgs.map(waitImg),
+    ...[...bgUrls].map(waitUrl),
+    ...vids.map(waitVid),
+    document.fonts ? document.fonts.ready.then(() => 'ok') : Promise.resolve('ok'),
+  ]);
+  /* decode() 比 onload 更彻底：onload 只代表"拿到了数据"，decode 才代表"能画" */
+  const decoded = await Promise.all(imgs.map((i, n) => statuses[n] === 'ok' ? decodeImg(i) : statuses[n]));
+  const failed = [...statuses.slice(imgs.length), ...decoded].filter(status => status !== 'ok').length;
+  if (opt.strict && failed) throw new Error('素材加载、解码失败或超时，不能生成可靠帧');
+  return { images: imgs.length, backgrounds: bgUrls.size, videos: vids.length, failed, ms: Date.now() - t0 };
+}
+window.VH_UI = Object.assign(window.VH_UI || {}, { assetsReady });
+
+/* ══════════════════════════════════════════════════════════════
+   节奏原语（VH_MOTION）—— 解决"每场只有开头动一下，后面 15 秒死住"
+   实测：131 秒片里 57 秒完全不动（43%）。观众不是嫌"不花"，是嫌"停"。
+
+   三个原语，都能在 render(rt) 里一行调用：
+     countTo(el, rt, { at, dur, to, from })   数字滚动（到点开始数）
+     slideTo(el, rt, { at, dur, x, y })       元素位移（"让某个东西挪一下"）
+     growTo(el, rt, { at, dur, w })           条形/进度增长
+   共同规矩：**停死**——到位后写固定终值，不逐帧重写（否则会有微抖）
+   ══════════════════════════════════════════════════════════════ */
+const VH_MOTION = (() => {
+  const clamp = (v) => v < 0 ? 0 : v > 1 ? 1 : v;
+  const eOut = (p) => 1 - Math.pow(1 - clamp(p), 3);
+  const progress = (rt, at, dur) => dur <= 0 ? (rt >= at ? 1 : 0) : clamp((rt - at) / dur);
+
+  /* ⚠ 关键：同一元素可能同时被 slideTo 和 drift 驱动。
+     如果各自直接写 el.style.transform，后写的会把前面的盖掉
+     （真实事故：S6 的条形加了 drift 却完全不动，因为 slideTo 每帧覆盖）。
+     所以用"每元素一份 offset"，谁改了谁登记，最后统一合成一次 transform。 */
+  const offsets = new WeakMap();
+  function put(el, key, x, y, scale) {
+    let o = offsets.get(el);
+    if (!o) { o = {}; offsets.set(el, o); }
+    o[key] = { x: x || 0, y: y || 0, s: scale == null ? 1 : scale };
+    let tx = 0, ty = 0, sc = 1;
+    for (const k in o) { tx += o[k].x; ty += o[k].y; sc *= o[k].s; }
+    const t = (Math.abs(sc - 1) > 0.0001)
+      ? `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${sc.toFixed(4)})`
+      : `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px)`;
+    if (el.style.transform !== t) el.style.transform = t;
+    return t;
+  }
+
+  /* 数字滚动：at 之前显示 from，dur 秒内滚到 to，之后定死 */
+  function countTo(el, rt, o = {}) {
+    const at = o.at == null ? 0 : o.at;
+    const dur = o.dur == null ? 1.2 : o.dur;
+    const from = o.from == null ? 0 : o.from;
+    const to = o.to == null ? 0 : o.to;
+    const dec = o.dec == null ? 0 : o.dec;
+    const fmt = (v) => o.fmt ? o.fmt(v) : v.toFixed(dec).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    /* ⚠ 三处实测 bug（第 40 秒显示 95/0/0，应该是 100/30/8）：
+       ① 还没到 at 时也把 from 写进 DOM —— 如果 from 是 0，观众会先看到 0 再跳
+       ② 到 at 之前 el.__vhDone 没清，上一帧的"已完成"状态会直接返回终值
+       ③ 结束后不再写 DOM，但别的动画可能改过它 → 终值要每帧保证（幂等，代价极小）
+       正确语义：**到 at 之前保持 from；此后滚动；结束保持 to。** */
+    if (rt < at) {
+      const t0 = fmt(from);
+      if (el.textContent !== t0) el.textContent = t0;
+      el.__vhDone = false;
+      return from;
+    }
+    const p = progress(rt, at, dur);
+    const v = p >= 1 ? to : from + (to - from) * eOut(p);
+    const txt = fmt(v);
+    if (el.textContent !== txt) el.textContent = txt;
+    el.__vhDone = p >= 1;
+    return v;
+  }
+
+   /* 元素位移：at 之前停在 from，dur 内移到 to，之后保持。
+      每次采样保证当前终值；停下后留阅读时间，不靠漂移代替内容推进。 */
+  function slideTo(el, rt, o = {}) {
+    const at = o.at == null ? 0 : o.at;
+    const dur = o.dur == null ? .8 : o.dur;
+    const fromX = o.fromX || 0, fromY = o.fromY || 0;
+    const toX = o.x || 0, toY = o.y || 0;
+    const p = progress(rt, at, dur);
+    const e = eOut(p);
+    put(el, 'slide', fromX + (toX - fromX) * e, fromY + (toY - fromY) * e);
+    return p;
+  }
+
+  /* 条形增长：从 from 增到 to，到位后保持（不再逐帧写） */
+  function growTo(el, rt, o = {}) {
+    const at = o.at == null ? 0 : o.at;
+    const dur = o.dur == null ? .9 : o.dur;
+    const p = progress(rt, at, dur);
+    const to = o.w;
+    const parse = value => {
+      if (typeof value === 'number' && Number.isFinite(value)) return { val: value, unit: 'px' };
+      const m = String(value).trim().match(/^(-?(?:\d+(?:\.\d*)?|\.\d+))(px|%|em|rem|vw|vh|vmin|vmax)?$/);
+      if (!m) throw new Error('growTo 需要数字或带单位的长度');
+      return { val: +m[1], unit: m[2] || 'px' };
+    };
+    const { val, unit } = parse(to);
+    const from = o.from == null ? { val: 0, unit } : parse(o.from);
+    if (from.val !== 0 && from.unit !== unit) throw new Error('growTo 起止单位必须一致');
+    const fromVal = from.val;
+    const cur = p <= 0 ? fromVal : fromVal + (val - fromVal) * eOut(p);
+    const str = (p >= 1 ? val : cur) + unit;
+    if (el.style.width !== str) el.style.width = str;
+    return p;
+  }
+
+  /* 分段进度：把"第 i 段什么时候开始"算出来（用于错开多个动画） */
+  const stagger = (i, base, step) => base + i * step;
+
+
+   /* 缓慢漂移：仅用于确有语义的环境层，不用于正文或为运动检查刷分。
+      阅读停顿是正常镜头状态；需要推进时改变对象关系或跟随讲述揭示证据。
+     用法：drift(el, rt, { x: 10, y: 6, period: 20 })  → 在 20 秒里漂 10px
+     ⚠ 幅度别大：>20px 会变成"晃动"，观众会觉得不稳。 */
+  function drift(el, rt, o = {}) {
+    const ampX = o.x == null ? 6 : o.x;
+    const ampY = o.y == null ? 4 : o.y;
+    const period = o.period == null ? 18 : o.period;
+    const ph = (o.phase || 0);
+    const w = (rt / period) * Math.PI * 2 + ph;
+    const dx = Math.sin(w) * ampX;
+    const dy = Math.cos(w * 0.7) * ampY;
+    const sc = o.scale == null ? 1 : 1 + Math.sin(w * 0.5) * o.scale;
+    put(el, 'drift', dx, dy, sc);
+    return { dx, dy };
+  }
+
+  return { countTo, slideTo, growTo, drift, stagger, eOut, clamp };
+})();
+window.VH_MOTION = VH_MOTION;
+window.VH_UI = Object.assign(window.VH_UI || {}, { motion: VH_MOTION });
+
+window.__assetsReady = assetsReady;
+/* vh:fx-end */

@@ -1,0 +1,24 @@
+.settings-page{background:var(--bg);color:var(--ink)}
+.settings-page main{max-width:940px;width:100%;margin:0 auto;padding:42px 40px 70px;gap:0}
+.settings-intro{padding-bottom:34px}
+.settings-intro>p{font-size:11px;color:var(--ink3);letter-spacing:2px;margin:0 0 12px}
+.settings-intro h2{font:400 30px/1.4 var(--serif);letter-spacing:-.7px;margin:0 0 12px}
+.settings-intro>span{font-size:13px;color:var(--ink2);line-height:1.8}
+.settings-page main>section{padding:26px 0;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent}
+.settings-page h2{font-size:16px;font-weight:500;margin-bottom:8px}
+.settings-page .lead{font-size:12px;line-height:1.9;max-width:680px}
+.settings-page .card{background:var(--panel);padding:20px;border-radius:12px;margin-top:12px}
+.settings-page .card.sel{border-color:var(--accent2)}
+.settings-page .card h3{font-size:14px;font-weight:500}
+.settings-page .base{line-height:1.8}
+.settings-page button{min-height:35px;font-size:12px;background:var(--panel)}
+.settings-page button.primary{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:500}
+.settings-page button:hover:not(:disabled){border-color:var(--line-strong);background:var(--panel2)}
+.settings-page button.primary:hover:not(:disabled){background:#41413a}
+.settings-page select,.settings-page input[type=password],.settings-page input[type=text]{background:var(--panel);border-color:var(--line);min-width:0;max-width:100%;font-size:12px;min-height:37px}
+.settings-page fieldset{background:var(--panel);padding:14px 16px;border-radius:10px}
+.settings-page fieldset select,.settings-page fieldset input{border:0;padding-left:0;width:100%;outline-offset:4px}
+.settings-page #clearKey{color:var(--bad);background:transparent}
+.settings-page .pill.on{background:var(--accent-soft);border-color:#ccd7c5;color:var(--ok)}
+.settings-page .note{font-size:12px;overflow-wrap:anywhere}
+@media(max-width:600px){.settings-page main{padding:28px 20px 50px}.settings-intro h2{font-size:25px}.settings-page .card{padding:16px}.settings-page .row>*{max-width:100%;min-width:0}}

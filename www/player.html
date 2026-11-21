@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>映序 · 项目编辑</title>
+<link rel="stylesheet" href="/_vh/panel.css">
+</head>
+<body>
+<header id="top">
+   <div class="brand"><a href="/">映序</a><span id="pname"></span></div>
+  <div id="chips"></div>
+  <div class="spacer"></div>
+  <a id="modelLink" href="/settings" title="自己选 provider 与模型" style="font-size:12px;color:var(--ink2);text-decoration:none">模型：…</a>
+  <button id="reload" title="重新加载预览，保留当前播放位置">刷新预览 ↻</button>
+  <button id="reStills" title="为每一场重新生成画面缩略图">更新分镜图</button>
+  <a href="/publish" class="btnmini" style="margin-left:6px;font-size:12px;color:var(--ink2);text-decoration:none;border:1px solid var(--line);border-radius:7px;padding:4px 9px">发布台 →</a>
+</header>
+
+<main>
+  <section id="stageCol">
+    <section id="projectOverview" aria-label="制作进度与下一步">
+      <div id="projectHeadline">正在读取项目状态…</div>
+      <ol id="projectSteps"></ol>
+      <div class="overview-next"><span id="projectNextDetail"></span><button id="projectNext" type="button" disabled>下一步</button></div>
+      <div id="stateConnection" role="status" aria-live="polite"></div>
+      <div id="stillsStatus" role="status" aria-live="polite"></div>
+    </section>
+    <details id="productionPanel" aria-label="自动制作状态与控制">
+      <summary>自动制作 · 正在读取状态…</summary>
+      <p>制作进度与操作记录。不会自动发布；技术检查不代表已看过或听过成片。</p>
+    </details>
+    <div id="formatControl" role="group" aria-label="项目画面比例">
+      <div class="format-row">
+        <label for="projectAspectRatio">画面比例</label>
+        <select id="projectAspectRatio" aria-describedby="formatSaved formatHelp formatStatus" disabled>
+          <option value="" disabled selected>读取比例中…</option>
+          <option value="16:9">16:9 横屏 · 1920×1080（B站）</option>
+          <option value="9:16">9:16 竖屏 · 1080×1920</option>
+        </select>
+        <button id="saveAspectRatio" type="button" disabled>保存比例</button>
+      </div>
+      <div id="formatSaved">已保存比例：读取中…</div>
+      <div id="formatHelp">选择后需点「保存比例」。修改后须复查排版，并重新渲染整片；不会自动启动制作任务。</div>
+      <div id="formatStatus" role="status" aria-live="polite" aria-atomic="true"></div>
+    </div>
+    <div id="frameWrap"><iframe id="frame" title="视频画面预览" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+      <div id="reloading" class="hidden">正在重载画面…</div>
+    </div>
+    <div id="frameWarn" class="hint hidden" role="alert"></div>
+    <div id="audioWarn" class="hint hidden" role="alert" style="color:#D8B26A;white-space:pre-wrap;margin:6px 0"></div>
+    <div id="transport">
+      <button id="play" class="icon" title="空格：播放或暂停" aria-label="播放或暂停">▶</button>
+      <span id="tclock">0.00 / --</span>
+      <input id="scrub" type="range" aria-label="播放进度" min="0" max="1000" value="0" step="0.5">
+      <button id="mute" class="icon" title="预览旁白开关" aria-label="开启或关闭旁白">🔊</button>
+      <select id="speed" aria-label="播放速度">
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.5">1.5×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+      </select>
+    </div>
+    <div id="chapters"><div class="hint">加载中…</div></div>
+    <div id="keys">空格 播放/暂停 · ←/→ ±1s（Shift ±5s）· ↑/↓ 上一场/下一场 · 双击静帧跳场 · 🔊 预览旁白开关（有配音后自动同步）</div>
+  </section>
+
+  <aside id="side">
+    <nav id="tabs">
+      <button data-tab="script" class="on">脚本</button>
+      <button data-tab="board">分镜</button>
+      <button data-tab="video">成片</button>
+      <button data-tab="publish">发布文案</button>
+      <button data-tab="chat">修改</button>
+    </nav>
+    <div id="script" class="tab on"><div class="hint">加载中…</div></div>
+    <div id="board" class="tab"><div class="hint">点击「更新分镜图」，查看每一场的画面预览。</div></div>
+    <div id="video" class="tab"><div class="hint">还没有成片。</div></div>
+    <div id="publish" class="tab"><div class="hint">加载中…</div></div>
+    <div id="chat" class="tab">
+      <div id="editHead" class="edit-head">
+        <strong>继续打磨这支视频</strong>
+        <span id="chatState">等待要求</span>
+      </div>
+      <p id="editHint" class="edit-hint">描述想改的内容，将按要求更新脚本、画面或配音。</p>
+      <div id="chatSubmitError" class="hint hidden" role="alert" style="color:#E38B7B;white-space:pre-wrap"></div>
+      <div id="chatError" class="hint hidden" role="alert" style="color:#E38B7B;white-space:pre-wrap"></div>
+      <div id="chatStale" class="hint hidden" role="status" style="color:#D8B26A;white-space:pre-wrap"></div>
+      <div id="chatWarnings" class="hint hidden" role="status" style="color:#D8B26A;white-space:pre-wrap"></div>
+      <div id="editActions" class="edit-actions">
+        <button id="chatRetry" class="hidden" type="button">继续未完成任务</button>
+        <button id="chatCancel" class="hidden">停止</button>
+      </div>
+      <div id="chatResumeHint" class="hint hidden" role="status"></div>
+      <div id="editExamples" class="edit-examples"></div>
+      <div id="chatLast" style="font-size:11.5px;color:var(--ink3);min-height:16px"></div>
+      <div id="chatLog" class="hidden"></div>
+      <div id="chatInputRow">
+        <textarea id="chatInput" rows="4" aria-label="视频修改要求"></textarea>
+        <button id="chatSend">开始修改 ↗</button>
+      </div>
+      <div id="chatPagerHost"></div>
+      <div id="editHistory" class="edit-history"></div>
+      <p class="edit-hint">修改仅针对当前项目。新建视频请返回创作空间，投稿请前往发布台。</p>
+
+      <!-- 次要操作：在现有项目上从头再做一版。
+           默认收起，点开才选材料类型——95% 的用法是"改这一支"，
+           但不把重做藏死，否则想推翻重来只能去首页丢素材。 -->
+      <div id="redoBox" class="edit-redo">
+        <div id="modes">
+          <button data-mode="article" class="on">从文章开始</button>
+          <button data-mode="topic">从选题开始</button>
+          <button data-mode="edit">修改现有视频</button>
+        </div>
+        <div id="modeHint" class="hint"></div>
+        <button id="chatNew" type="button" disabled>在当前项目中重新制作 →</button>
+      </div>
+
+      <!-- 以下为内部状态容器，不再直接展示；保留是因为执行链与既有测试依赖。 -->
+      <div id="chatHead" class="hidden"><span id="chatProvider"></span></div>
+      <details id="memBox" class="hidden"><summary>它记得的最近几轮</summary><div id="chatMemory"></div></details>
+      <div id="chatQuick" class="hidden"></div>
+      <label class="draft-control"><input id="saveChatDraft" type="checkbox">记住这段没发出去的要求（只存在这台电脑的浏览器里）</label>
+      <div id="chatDraftStatus" class="hint" role="status"></div>
+      <label id="attachRow" class="hidden">
+        <input type="file" id="attach" multiple>
+        <span id="attachLabel"></span>
+      </label>
+    </div>
+  </aside>
+</main>
+
+<script type="module" src="/_vh/panel.js"></script>
+</body>
+</html>

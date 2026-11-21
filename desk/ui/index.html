@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>映序 · 发布台</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="top">
+  <div class="brand">映序 <span>发布台</span><span id="appVersion"></span></div>
+  <div class="spacer"></div>
+  <button id="btnAccount" class="mini">未登录</button>
+</header>
+
+<main id="shell">
+  <aside id="left">
+    <section class="card">
+      <div class="cardhead">
+        <h2>选择作品</h2>
+        <button id="refresh" class="mini" title="重新读取 projects/">刷新</button>
+      </div>
+      <div id="projects" class="list"></div>
+    </section>
+
+    <section class="card" id="batchCard">
+      <div class="cardhead">
+        <h2>批量发布</h2>
+        <span id="batchCount" class="pill">未选择</span>
+      </div>
+      <p class="hint">在项目列表里勾选要发的项目，按顺序逐条投稿。任何一条失败就停下，不自动重试。</p>
+      <label class="field tight">
+        <span class="label">间隔（秒） <em>2–120</em></span>
+        <input id="batchInterval" type="number" min="2" max="120" step="1" value="3">
+      </label>
+      <div class="actions">
+        <button id="btnBatch" class="mini" disabled>发布所选作品</button>
+        <button id="btnBatchCancel" class="mini" hidden>停止</button>
+      </div>
+      <ol id="batchSteps" class="steps"></ol>
+    </section>
+
+    <section class="card" id="draftCard" hidden>
+      <div class="cardhead">
+        <h2>投稿内容</h2>
+        <span id="draftReady" class="pill"></span>
+      </div>
+      <div id="warnings" class="warnings"></div>
+      <div id="prepareBox" class="prepare" hidden>
+        <div class="preparetext" id="prepareText">这个项目还缺发布文案或封面。</div>
+        <button id="btnPrepare" class="primary">一键补齐文案和封面</button>
+        <pre id="prepareLog" class="preparelog" hidden></pre>
+      </div>
+
+      <label class="field">
+        <span class="label">标题 <em id="titleCount"></em></span>
+        <textarea id="fTitle" rows="2" maxlength="200"></textarea>
+      </label>
+
+      <div class="field">
+        <label class="label" id="partitionLabel" for="fPartition">投稿分区</label>
+        <select id="fPartition"></select>
+        <input id="fPartitionSearch" type="search" class="search" aria-label="搜索投稿分区" placeholder="搜 AI / Agent / 人工智能 / 计算机 / 231" autocomplete="off">
+        <span class="sub" id="partitionNote"></span>
+        <p class="hint" id="partitionAdvice"></p>
+        <div class="actions partition-actions">
+          <button type="button" class="mini" id="btnReloadPartitions">刷新实时分区</button>
+          <button type="button" class="mini" id="btnUseLastPartition" hidden>沿用上次「<span id="lastPartitionName"></span>」</button>
+          <button type="button" class="mini" id="btnAiChannel">查看新版人工智能频道</button>
+        </div>
+      </div>
+
+      <label class="field">
+        <span class="label">标签 <em>空格、逗号或顿号分隔，最多 10 个</em></span>
+        <input id="fTags" type="text">
+      </label>
+
+      <label class="field">
+        <span class="label">简介</span>
+        <textarea id="fDesc" rows="8"></textarea>
+      </label>
+
+      <label class="field">
+        <span class="label">置顶评论 <em>（投稿成功后手动贴）</em></span>
+        <textarea id="fComment" rows="2"></textarea>
+      </label>
+
+      <div class="row">
+        <label class="check"><input id="fCover" type="checkbox" checked> 一并上传封面</label>
+        <label class="check"><input id="fReprint" type="checkbox"> 禁止转载</label>
+      </div>
+
+      <div id="assets" class="assets"></div>
+
+      <details class="advanced">
+        <summary>版权与来源</summary>
+        <label class="field">
+          <span class="label">版权类型</span>
+          <select id="fCopyright">
+            <option value="1">自制</option>
+            <option value="2">转载</option>
+          </select>
+        </label>
+        <label class="field" id="sourceField" hidden>
+          <span class="label">转载来源</span>
+          <input id="fSource" type="text" placeholder="https://…">
+        </label>
+        <label class="field">
+          <span class="label">粉丝动态 <em>留空则不写</em></span>
+          <textarea id="fDynamic" rows="2"></textarea>
+        </label>
+      </details>
+
+      <div class="actions">
+        <button id="btnPlan" class="mini">试运行</button>
+        <button id="btnSubmit" class="primary">确认无误，提交投稿</button>
+      </div>
+      <p id="submitBlockers" class="hint" role="status" aria-live="polite"></p>
+      <p class="hint">点击「试运行」核对标题、分区、标签和简介；投稿是不可撤销的对外动作。</p>
+    </section>
+  </aside>
+
+  <section id="right">
+    <div id="tabs">
+      <button class="tab on" data-tab="plan">提交前预览</button>
+      <button class="tab" data-tab="log">进度</button>
+      <button class="tab" data-tab="result">结果</button>
+    </div>
+
+    <div id="pane-plan" class="pane on">
+      <div id="planEmpty" class="empty">
+        <h3>先在左边选一个项目</h3>
+        <p>选题后会带出 发布文案.md 的标题 / 简介 / 标签，以及当前成片和封面。</p>
+      </div>
+      <div id="planBody" hidden>
+        <div class="planhead">
+          <img id="planCover" alt="" hidden>
+          <div class="planmeta">
+            <label class="field tight">
+              <span class="label">标题（可直接改）</span>
+              <textarea id="pTitle" rows="2"></textarea>
+            </label>
+            <div class="kv">
+              <div><span>分区</span><strong id="pPartition">—</strong></div>
+              <div><span>标签</span><strong id="pTags">—</strong></div>
+              <div><span>成片</span><strong id="pVideo">—</strong></div>
+              <div><span>封面</span><strong id="pCoverMeta">—</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="payload">
+          <div class="payloadhead">
+            <h3>将要提交的内容</h3>
+            <span class="pill">试运行不发请求</span>
+          </div>
+          <pre id="planJson">—</pre>
+        </div>
+      </div>
+    </div>
+
+    <div id="pane-log" class="pane">
+      <ol id="steps" class="steps"><li class="waiting">还没有开始。</li></ol>
+      <div id="progressWrap" hidden><div id="progressBar"></div></div>
+    </div>
+
+    <div id="pane-result" class="pane">
+      <div id="resultEmpty" class="empty"><h3>还没有提交记录</h3><p>成功后这里会显示 BV 号和稿件链接。</p></div>
+      <div id="resultBody" hidden>
+        <h3 id="resultTitle">投稿已提交</h3>
+        <p id="resultVerify" class="verify"></p>
+        <p id="resultLine"></p>
+        <div class="actions">
+          <button id="btnOpenManage" class="primary">打开稿件管理（看真实状态）</button>
+          <button id="btnOpenResult" class="mini">打开稿件页</button>
+          <button id="btnCopyComment" class="mini">复制置顶评论</button>
+        </div>
+        <pre id="resultJson"></pre>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- 扫码登录 -->
+<div id="loginModal" class="modal" hidden>
+  <div class="modalbox">
+    <h2>扫码登录哔哩哔哩</h2>
+    <p class="hint">用手机 B 站 App 扫下方二维码。登录信息只保存在这台电脑上，不会写进项目或交付包。</p>
+    <div class="qrwrap"><img id="qrImage" alt="登录二维码" width="260" height="260"></div>
+    <p id="qrStatus" class="status">正在获取二维码…</p>
+    <ul id="checkList" class="checks" hidden></ul>
+    <div class="actions">
+      <button id="btnRefreshQr" class="mini">换一张</button>
+      <button id="btnLogout" class="mini">退出登录</button>
+      <button id="btnCloseLogin" class="mini">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

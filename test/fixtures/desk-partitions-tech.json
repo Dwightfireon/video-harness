@@ -1,0 +1,17 @@
+{
+  "source": "https://member.bilibili.com/x/vupre/web/archive/pre",
+  "checkedAt": "2026-10-28T01:28:30.090Z",
+  "note": "真实响应的科技分区节选；仅保留公开分区字段，不含账号、Cookie 或其他投稿设置。",
+  "typeMode": 2,
+  "isTypeidRevision": 0,
+  "typelist": [{
+    "id": 188, "parent": 0, "name": "科技", "description": "科技", "show": true,
+    "children": [
+      { "id": 95, "parent": 188, "name": "数码", "description": "手机/电脑/相机/影音智能设备等", "show": true },
+      { "id": 230, "parent": 188, "name": "软件应用", "description": "围绕各类系统软件、应用软件、网站的相关视频", "show": true },
+      { "id": 231, "parent": 188, "name": "计算机技术", "description": "软硬件开发/人工智能/大数据/深度学习/IT运维等", "show": true },
+      { "id": 232, "parent": 188, "name": "科工机械", "description": "航空航天/工程建设/电子工程/机械制造/海洋工程等", "show": true },
+      { "id": 233, "parent": 188, "name": "极客DIY", "description": "硬核制作/发明创造/技术创新/极客文化等", "show": true }
+    ]
+  }]
+}

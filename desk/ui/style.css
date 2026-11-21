@@ -1,0 +1,166 @@
+/* 发布台界面：左边填表，右边预览将要提交的 payload。 */
+:root{
+  color-scheme:light;
+  /* Keep the optional Electron surface aligned with www/theme.css, offline. */
+  --bg:#faf9f6; --panel:#fff; --panel2:#f3f2ee; --line:#e4e2dc;
+  --ink:#252520; --ink2:#67675f; --ok:#38634c; --warn:#926323; --bad:#b04438;
+  --accent:#252520; --accent2:#6e7d65; --mono:'SF Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+/* .empty / .modal 用了 display:flex，会盖掉 [hidden] 的默认 display:none，这里显式兜住。 */
+[hidden]{display:none !important}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:14px/1.5 -apple-system,"PingFang SC","Hiragino Sans GB",system-ui,sans-serif;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+#top{
+  display:flex; align-items:center; gap:10px; height:46px; padding:0 16px 0 84px;
+  background:var(--panel); border-bottom:1px solid var(--line); flex-shrink:0;
+  -webkit-app-region:drag;
+}
+#top button{-webkit-app-region:no-drag}
+.brand{font:500 21px Georgia,"Songti SC",serif;letter-spacing:2px}
+.brand span{color:var(--ink2); font-weight:500; font-size:12px; margin-left:6px}
+.spacer{flex:1}
+
+button{
+  background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+  border-radius:8px; padding:6px 12px; cursor:pointer; font-size:13px; font-family:inherit;
+}
+button:hover:not(:disabled){border-color:var(--accent2);background:var(--panel2);color:var(--ink)}
+button:disabled{opacity:.42; cursor:default}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--ok); outline-offset:2px}
+button.mini{padding:4px 9px; font-size:12px}
+button.primary{background:var(--accent); border-color:var(--accent2); color:#fff; font-weight:600}
+button.primary:hover:not(:disabled){background:#41413a;color:#fff}
+#btnAccount{border-color:var(--accent2); color:var(--ok)}
+
+#shell{flex:1; display:flex; min-height:0}
+#left{width:400px; flex:0 0 400px; overflow-y:auto; background:var(--panel); border-right:1px solid var(--line); padding:12px}
+#right{flex:1; display:flex; flex-direction:column; min-width:0; min-height:0}
+
+.card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px}
+.cardhead{display:flex; align-items:center; gap:8px; margin-bottom:10px}
+.cardhead h2{margin:0; font-size:12px; letter-spacing:.6px; text-transform:uppercase; color:var(--ink2); flex:1}
+.pill{font-size:11px; padding:2px 8px; border-radius:10px; border:1px solid var(--line); color:var(--ink2)}
+.pill.ok{color:var(--ok); border-color:var(--ok)}
+.pill.warn{color:var(--warn); border-color:var(--warn)}
+.pill.bad{color:var(--bad); border-color:var(--bad)}
+
+.list{display:flex; flex-direction:column; gap:6px}
+.item{text-align:left; width:100%; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; display:block}
+.item:hover{border-color:var(--accent2)}
+.item.on{border-color:var(--accent2); background:#e9ede5}
+.item .t{font-weight:600; font-size:13px; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.item .m{font-size:11px; color:var(--ink2); display:flex; gap:6px; margin-top:3px}
+
+/* 项目行：左侧勾选进批量队列，右侧点击进入单条编辑。 */
+.project-row{display:flex; align-items:center; gap:7px}
+.project-row .item{flex:1; min-width:0}
+.project-row .pick{margin:0; flex-shrink:0; accent-color:var(--accent2); width:14px; height:14px; cursor:pointer}
+.project-row .pick:disabled{cursor:default}
+#batchSteps{max-height:140px; overflow:auto; margin:8px 0 0; padding-left:18px; font-size:12px}
+#batchSteps li{margin-bottom:3px; overflow-wrap:anywhere}
+
+.prepare{background:#e9ede5; border:1px solid var(--accent2); border-radius:8px; padding:9px; margin-bottom:10px}
+.preparetext{font-size:12px; color:var(--ink); margin-bottom:7px; line-height:1.5}
+.preparelog{margin:8px 0 0; font:11px/1.5 var(--mono); color:var(--ink2); max-height:150px; overflow:auto; white-space:pre-wrap; background:var(--bg); border-radius:6px; padding:7px}
+
+.warnings{display:flex; flex-direction:column; gap:5px; margin-bottom:10px}
+.warn{font-size:12px; color:var(--warn); border-left:2px solid var(--warn); padding-left:8px}
+.warn.bad{color:var(--bad); border-color:var(--bad)}
+.warn.dim{color:var(--ink2); border-color:var(--line)}
+
+.field{display:block; margin-bottom:9px}
+.field.tight{margin-bottom:6px}
+.field .label{display:flex; gap:6px; align-items:baseline; font-size:12px; color:var(--ink2); margin-bottom:4px}
+.field .label em{font-style:normal; font-size:11px; opacity:.8}
+.field .sub{display:block; font-size:11px; color:var(--ink2); margin-top:3px}
+.field textarea,.field input,.field select{
+  width:100%; background:var(--bg); color:var(--ink); border:1px solid var(--line);
+  border-radius:8px; padding:7px 9px; font:inherit; font-size:13px; resize:vertical;
+}
+.field .search{margin-top:5px; font-size:12px; padding:5px 9px}
+.partition-actions{margin-top:7px}
+#partitionAdvice{line-height:1.6; color:var(--warn)}
+#fTitle,#pTitle{font-weight:600}
+#titleCount{margin-left:auto; font-variant-numeric:tabular-nums}
+.row{display:flex; gap:14px; margin:4px 0 10px; flex-wrap:wrap}
+.check{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink2); cursor:pointer}
+.check input{width:auto}
+
+.assets{display:flex; flex-direction:column; gap:6px; margin-bottom:10px}
+.asset{display:flex; align-items:center; gap:8px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 9px; font-size:12px}
+.asset img{height:32px; border-radius:4px; border:1px solid var(--line)}
+.asset .grow{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink2)}
+.asset .flag{font-size:10px; padding:1px 6px; border-radius:8px; color:var(--warn); border:1px solid var(--warn); flex:0 0 auto}
+.asset strong{color:var(--ink); font-size:12px; font-weight:600}
+/* 封面行：比成片行高，缩略图给到 72px 高（320×180 显示为 128×72），
+   原来的 32px 高只有 57px 宽，几乎看不出有封面。 */
+.asset.cover-asset{padding:9px 9px; align-items:flex-start}
+.asset.cover-asset .cover-thumb{height:72px; width:auto; cursor:zoom-in; align-self:center}
+.cover-zoom{position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+  background:rgba(12,18,14,.82); cursor:zoom-out; padding:24px}
+.cover-zoom img{max-width:92vw; max-height:92vh; border-radius:10px; box-shadow:0 18px 60px rgba(0,0,0,.5)}
+
+.advanced{margin:4px 0 10px; border-top:1px solid var(--line); padding-top:8px}
+.advanced summary{cursor:pointer; font-size:12px; color:var(--ink2); margin-bottom:8px}
+
+.actions{display:flex; gap:6px; flex-wrap:wrap}
+.hint{font-size:11px; color:var(--ink2); margin:9px 0 0}
+
+#tabs{display:flex; gap:4px; padding:8px 12px 0; background:var(--panel); border-bottom:1px solid var(--line); flex-shrink:0}
+.tab{background:transparent; border:1px solid transparent; border-bottom:0; border-radius:8px 8px 0 0; color:var(--ink2); padding:6px 12px}
+.tab.on{background:var(--bg); color:var(--ink); border-color:var(--line)}
+.pane{display:none; flex:1; min-height:0; overflow:auto; padding:14px}
+.pane.on{display:block}
+.empty{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; min-height:70%; text-align:center; color:var(--ink2)}
+.empty h3{margin:0; font-size:15px; color:var(--ink)}
+.empty p{margin:0; font-size:12px; max-width:420px}
+
+.planhead{display:flex; gap:14px; align-items:flex-start; margin-bottom:14px}
+#planCover{width:220px; height:auto; border-radius:8px; border:1px solid var(--line); flex:0 0 auto}
+.planmeta{flex:1; min-width:0}
+.kv{display:grid; grid-template-columns:1fr 1fr; gap:6px 14px; font-size:12px}
+.kv div{display:flex; gap:8px; align-items:baseline; min-width:0}
+.kv span{color:var(--ink2); flex:0 0 34px}
+.kv strong{font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.payload{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px}
+.payloadhead{display:flex; align-items:center; gap:8px; margin-bottom:8px}
+.payloadhead h3{margin:0; font-size:13px; flex:1}
+pre{margin:0; font:12px/1.6 var(--mono); color:var(--ink); white-space:pre-wrap; overflow-wrap:anywhere}
+#resultJson{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; margin-top:12px; max-height:46vh; overflow:auto}
+.verify{margin:0 0 10px; font-size:12px; padding:7px 10px; border-radius:8px; border:1px solid var(--line); color:var(--ink2)}
+.verify.ok{color:var(--ok); border-color:var(--ok)}
+.verify.warn{color:var(--warn); border-color:var(--warn)}
+.verify:empty{display:none}
+#resultLine{white-space:pre-wrap; font-size:13px; line-height:1.65; color:var(--ink2); margin:0}
+
+.steps{margin:0; padding-left:20px; font-size:13px}
+.steps li{margin-bottom:6px}
+.steps li.done{color:var(--ok)}
+.steps li.doing{color:var(--ink)}
+.steps li.waiting{color:var(--ink2)}
+.steps li.failed{color:var(--bad)}
+.steps li .detail{display:block; font:11px var(--mono); color:var(--ink2); overflow-wrap:anywhere}
+#progressWrap{height:6px; background:var(--panel2); border-radius:3px; margin-top:14px; overflow:hidden}
+#progressBar{height:100%; width:0; background:var(--accent2); transition:width .2s}
+
+.modal{position:fixed; inset:0; background:#0B0D0Ecc; display:flex; align-items:center; justify-content:center; z-index:20}
+.modal[hidden]{display:none}
+.modalbox{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px 22px; width:380px; text-align:center}
+.modalbox h2{margin:0 0 8px; font-size:16px}
+.qrwrap{background:#fff; border-radius:10px; padding:10px; display:inline-block; margin:8px 0}
+#qrImage{display:block; width:260px; height:260px}
+.status{font-size:12px; color:var(--warn); min-height:18px; margin:4px 0 12px}
+.status.ok{color:var(--ok)}
+.checks{list-style:none; margin:0 0 12px; padding:0; text-align:left; font-size:12px}
+.checks li{display:flex; gap:6px; align-items:baseline; padding:3px 0; border-top:1px solid var(--line)}
+.checks li:first-child{border-top:0}
+.checks .mark{flex:0 0 14px}
+.checks .ok{color:var(--ok)}
+.checks .bad{color:var(--bad)}
+.checks .note{color:var(--ink2); margin-left:auto; text-align:right; overflow-wrap:anywhere}
+.modalbox .actions{justify-content:center}

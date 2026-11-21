@@ -1,0 +1,10 @@
+{
+  "preset": "xiaoxiao-125-v1",
+  "voice": "zh-CN-XiaoxiaoNeural",
+  "speed": 1.25,
+  "timing": {
+    "tail": 0.15,
+    "gap": 0.20,
+    "sceneBeat": 0.35
+  }
+}

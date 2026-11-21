@@ -1,0 +1,22 @@
+{
+  "name": "video-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "视频专属 harness：编排 article-video 管线，本地播放/预览页，增量渲染，分钟级迭代。",
+  "bin": {
+    "vh": "./vh.mjs"
+  },
+  "scripts": {
+    "test": "node scripts/test.mjs",
+    "desk": "electron desk/main.mjs",
+    "desk:smoke": "VH_DESK_SMOKE=1 electron desk/main.mjs"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0"
+  },
+  "dependencies": {
+    "playwright": "1.64.1",
+    "qrcode": "^1.5.4"
+  }
+}
