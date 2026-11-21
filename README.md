@@ -14,6 +14,99 @@
 > [执行器解耦](docs/runner-decoupling-2026-11-08.md)。
 > **不自动切换渠道**，模型与渠道仍由本机配置显式决定。
 
+## 安装与运行（从克隆开始）
+
+> 如果你是第一次拿到这个仓库，按本节顺序执行即可。完成第 5 步 `doctor` 无报错后，再看后面的「快速开始」。
+
+### 1. 前置条件
+
+- **Node.js 22.12 或更新版本**（建议用 nvm / fnm 管理）
+- **Google Chrome**，必须安装在 `/Applications/Google Chrome.app`
+  - 最低版本：`156.0.8078.73`
+  - 渲染器只使用系统 Chrome，**不要**运行 `playwright install`
+- **Python 3**（用于 TTS 与部分分析脚本）
+- **ffmpeg / ffprobe**（用于音视频处理）
+- macOS / Linux（Windows 未专门适配）
+
+### 2. 克隆仓库
+
+```bash
+git clone git@github.com:Dwightfireon/video-harness.git
+cd video-harness
+```
+
+### 3. 安装 Node 依赖
+
+```bash
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --ignore-scripts
+```
+
+说明：
+- `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`：跳过自带 Chromium 下载，本项目只用系统 Chrome。
+- `--ignore-scripts`：跳过 Playwright / Electron 的安装脚本；桌面应用如需使用，再单独准备 Electron。
+
+### 4. 安装系统与 Python 依赖
+
+macOS 示例：
+
+```bash
+brew install ffmpeg python3
+pip3 install edge-tts
+```
+
+可选：
+- **离线 Kokoro TTS**：需要额外下载 Kokoro 模型到 `models/`（本仓库默认使用 Edge TTS，不强制）。
+- **语音识别 / 转写**：需要 `models/faster-whisper-small`（未随仓库提供，可按 `node vh.mjs doctor` 提示另行准备）。
+
+### 5. 检查环境
+
+```bash
+node vh.mjs doctor
+```
+
+`doctor` 会检查 Node、Chrome、Playwright、ffmpeg、Python/TTS 等实际解析到的路径与版本。**安装依赖不等于环境已验证**，请以 `doctor` 输出为准。
+
+### 6. 运行测试（可选但推荐）
+
+```bash
+npm test
+```
+
+### 7. 启动与新建项目
+
+启动本地工作台：
+
+```bash
+npm run desk
+```
+
+或直接用 CLI 新建项目：
+
+```bash
+node vh.mjs new --dir projects/我的视频
+```
+
+查看帮助：
+
+```bash
+node vh.mjs --help
+```
+
+### 8. 凭证与数据位置
+
+- Bilibili 登录凭据：`~/.config/video-harness/bilibili.json`
+- OpenDesign API Key：`~/.config/video-harness/credentials.json`
+- 项目、队列与生成产物：仓库内的 `projects/`、`dist/`、`out/`、`schedule.json`
+
+这些运行数据默认不进入 Git（见 `.gitignore`）。
+
+### 9. 常见问题
+
+- **`playwright install` 报错或提示下载 Chromium**：不要运行它，本项目渲染只使用系统 Chrome。
+- **Chrome 版本过旧**：升级 Google Chrome 到 `156.0.8078.73` 或更新。
+- **`npm ci` 失败**：确认 Node 版本为 22.12+，并删除 `node_modules` 后重试。
+- **桌面应用无法启动**：因为 `--ignore-scripts` 跳过了 Electron 安装脚本，请单独安装 Electron 后再运行 `npm run desk`。
+
 ## 分段自动化
 
 四段可以各自单独跑，也可以串起来：
