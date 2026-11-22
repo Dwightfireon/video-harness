@@ -55,6 +55,11 @@ function setNotice(text, kind = '') {
 }
 
 /* ---------- 账号 ---------- */
+function readyFailures() {
+  const checks = P.overview?.ready?.checks;
+  return Array.isArray(checks) ? checks.filter(item => !item.ok) : [];
+}
+
 function paintAccount() {
   const a = P.overview?.account;
   const btn = $p('#pubAccount');
@@ -68,8 +73,10 @@ function paintAccount() {
     btn.textContent = a?.expired ? '登录已过期，点此重登' : '未登录，点此扫码';
     btn.className = 'pub-account warn';
   } else {
+    const fails = readyFailures();
     const warn = P.overview?.ready && !P.overview.ready.ok ? ' · 投稿受限' : '';
     btn.textContent = '已登录：' + (a.name || 'B 站账号') + (a.level ? '（LV' + a.level + '）' : '') + warn;
+    if (fails.length) btn.title = fails.map(item => `${item.name}：${item.note || '未通过'}`).join('\n');
     btn.className = 'pub-account' + (warn ? ' warn' : ' ok');
   }
 }
@@ -265,7 +272,6 @@ async function loadDraft(id) {
     P.refs = null;
     paintForm();
     loadReferences(id);
-    void recommendPartition({ auto: true });
     setNotice('');
     // 选中项目后自动试运行一次：用户不必先点一下才知道缺什么。
     plan({ silent: true });
@@ -454,8 +460,17 @@ function currentProblems() {
   if (!title) problems.push('标题不能为空');
   if (!tags) problems.push('至少填一个标签');
   if (!partition) problems.push('请选择投稿分区');
-  if (!P.overview?.account?.loggedIn) problems.push('还没有登录');
-  else if (P.overview?.ready && !P.overview.ready.ok) problems.push('投稿体检未通过');
+  if (P.catalog && P.catalog.live === false) {
+    problems.unshift(P.catalog.reason || '尚未取得 B 站实时投稿分区，请点右上角重新扫码登录或点「刷新」');
+  }
+  if (!P.overview?.account?.loggedIn) problems.push('还没有登录（点右上角扫码登录）');
+  else if (P.overview?.ready && !P.overview.ready.ok) {
+    const fails = readyFailures();
+    const detail = fails.length
+      ? fails.map(item => `${item.name}${item.note ? '：' + item.note : '未通过'}`).join('；')
+      : '请点右上角重新扫码登录或点「刷新」';
+    problems.push(`投稿体检未通过（${detail}）`);
+  }
   if (promotionPanel?.read().enabled && P.plan && P.plan.promotionSupported !== true) problems.push('后端尚不支持商业声明，请在无制作或投稿运行时安全重启工作台');
   else if (promotionPanel?.read().enabled && P.plan && P.plan.promotionProtocolVersion !== 2) problems.push('后端尚未接入营销内容标注，请在空闲时安全重启工作台后重新检查');
   if (P.draft?.publication?.state === 'submitted') problems.push('当前成片已有投稿记录，不会重复提交');
@@ -546,6 +561,38 @@ function paintSummary() {
 
   if (issues) {
     issues.innerHTML = '';
+    const fails = readyFailures();
+    if (P.overview?.ready && !P.overview.ready.ok) {
+      const boxEl = document.createElement('div');
+      boxEl.className = 'pub-block bad';
+      const lines = fails.length
+        ? fails.map(item => `· ${item.name}：${item.note || '未通过'}`).join('\n')
+        : '· 创作中心或上传线路校验未通过';
+      boxEl.textContent = `✗ 账号投稿体检未通过，当前无法提交：\n${lines}\n常见原因：B 站登录态过期、缺少设备 Cookie 或临时风控。请先点下方按钮重新扫码登录或刷新重试。`;
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px';
+      const relogin = document.createElement('button');
+      relogin.type = 'button'; relogin.className = 'pub-btn'; relogin.textContent = '重新扫码登录';
+      relogin.onclick = () => openLogin();
+      const reloadBtn = document.createElement('button');
+      reloadBtn.type = 'button'; reloadBtn.className = 'pub-btn'; reloadBtn.textContent = '重新检测并刷新分区';
+      reloadBtn.onclick = () => boot();
+      row.append(relogin, reloadBtn);
+      boxEl.appendChild(row);
+      issues.appendChild(boxEl);
+    } else if (P.catalog && P.catalog.live === false) {
+      const boxEl = document.createElement('div');
+      boxEl.className = 'pub-block warn';
+      boxEl.textContent = `⚠ ${P.catalog.reason || '当前显示离线参考分区，无法直接提交。请先登录并刷新实时分区。'}`;
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px';
+      const reloadBtn = document.createElement('button');
+      reloadBtn.type = 'button'; reloadBtn.className = 'pub-btn'; reloadBtn.textContent = '刷新实时分区';
+      reloadBtn.onclick = () => boot();
+      row.appendChild(reloadBtn);
+      boxEl.appendChild(row);
+      issues.appendChild(boxEl);
+    }
     // 顶部只留结论：缺项已经高亮在输入框上、底部栏也写着「还差什么」。
     const blocking = (plan?.problems || []).filter(text => !/分区|标题|标签/.test(text));
     for (const problem of blocking) {
@@ -585,9 +632,13 @@ function paintSummary() {
 
 /* ---------- 分区 ---------- */
 function partitionFields(selected, catalog = {}) {
-  /* 分区模式与兼容 tid 由后端给；两个表单各自提供所选编号。 */
-  return { partitionTaxonomy: catalog.taxonomy,
-    humanType2: catalog.human ? selected : 0, tid: catalog.human ? catalog.compatTid : selected };
+  /* 分区模式与兼容 tid 由后端给；若编号 >= 1000 绝不误填进旧版 tid。 */
+  const isHuman = catalog.human === true || catalog.taxonomy === 'human-type2' || selected >= 1000;
+  return {
+    partitionTaxonomy: catalog.taxonomy || (isHuman ? 'human-type2' : 'legacy-tid'),
+    humanType2: isHuman ? selected : 0,
+    tid: isHuman ? (catalog.compatTid || 21) : selected,
+  };
 }
 function paintPartitionAdvice() {
   const box = $p('#pubPartitionAdvice');
@@ -691,6 +742,7 @@ async function recommendPartition({ auto = false } = {}) {
   const tags = $p('#pubTags').value.trim();
   const desc = $p('#pubDesc').value.trim();
   if (auto) {
+    if (P.catalog && P.catalog.live === false) return;
     if (P.draft.publication?.state === 'submitted' || P.draft.savedForm?.partition || cached.autoTriggered || entry?.inheritPartition === false) return;
     if (!title && !tags && !desc) return;
     partitionRecCache.set(id, { ...cached, autoTriggered: true });

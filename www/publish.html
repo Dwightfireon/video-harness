@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<style>html[data-theme="dark"],html[data-theme="dark"] body.workspace-page{background:#08090c;color:#f4f4f6}html[data-theme="light"],html[data-theme="light"] body.workspace-page{background:#f1f2f4;color:#111215}</style>
+<script>(function(){try{var t=localStorage.getItem('vh.ui.theme')==='light'?'light':'dark';document.documentElement.dataset.theme=t;document.documentElement.style.background=t==='light'?'#f1f2f4':'#08090c';}catch(e){document.documentElement.dataset.theme='dark';document.documentElement.style.background='#08090c';}})();</script>
 <title>映序 · 发布台</title>
 <link rel="stylesheet" href="/_vh/panel.css">
 <style>
@@ -113,9 +116,10 @@ details.pub-jsonbox summary:hover{color:var(--ink)}
 .pub-modal-actions{display:flex;gap:8px;justify-content:center;margin-top:12px}
 </style>
 <link rel="stylesheet" href="/_vh/publish.css">
-<script type="module" src="/_vh/workbench-shell.mjs"></script>
+<link rel="stylesheet" href="/_vh/liquid-glass.css" data-vh-liquid-glass="1">
 </head>
 <body class="workspace-page publish-page" data-page="publish">
+<script src="/_vh/workbench-shell.mjs"></script>
 <header id="pubTop">
   <h1>发布台</h1>
   <span class="sub">为作品准备好最后一步</span>

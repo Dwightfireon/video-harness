@@ -1,0 +1,864 @@
+/* 映序 · 液态玻璃美学皮肤 v2（低耦合独立样式层）
+ * 审美原则：去霓虹、去青紫模板感。以「纯正中性色 + 光学折射 + 水银级微光」还原真实的液态玻璃质感。
+ * 双主题：曜石水银（dark，暗房烟熏水晶）与 冰川白玉（light，日光磨砂水晶）。
+ */
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f1f2f4;
+  --panel: rgba(255, 255, 255, 0.66);
+  --panel2: rgba(255, 255, 255, 0.46);
+  --nav-bg: rgba(255, 255, 255, 0.60);
+  --line: rgba(15, 17, 21, 0.08);
+  --line-strong: rgba(15, 17, 21, 0.18);
+  --ink: #111215;
+  --ink2: #52565e;
+  --ink3: #7c818b;
+  --ok: #256f4f;
+  --warn: #9a6516;
+  --bad: #b83b32;
+  --accent: #111215;
+  --accent2: #3a3f47;
+  --accent-soft: rgba(17, 18, 21, 0.06);
+
+  /* 冰川白玉 · 纯净水光折射 */
+  --lg-canvas: linear-gradient(160deg, #f6f7f9 0%, #eceef2 52%, #f3f4f6 100%);
+  --lg-orb-1: radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.95), rgba(215, 222, 232, 0.42) 48%, transparent 72%);
+  --lg-orb-2: radial-gradient(circle at 50% 50%, rgba(203, 213, 225, 0.52), rgba(226, 232, 240, 0.24) 48%, transparent 72%);
+  --lg-orb-3: radial-gradient(circle at 50% 50%, rgba(228, 224, 216, 0.48), rgba(241, 243, 245, 0.16) 48%, transparent 72%);
+  --lg-surface: linear-gradient(145deg, rgba(255, 255, 255, 0.84) 0%, rgba(255, 255, 255, 0.54) 60%, rgba(248, 249, 251, 0.72) 100%);
+  --lg-surface-strong: linear-gradient(145deg, rgba(255, 255, 255, 0.94) 0%, rgba(250, 251, 252, 0.78) 100%);
+  --lg-surface-subtle: linear-gradient(145deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.34) 100%);
+  --lg-rim: inset 0 1px 0 rgba(255, 255, 255, 0.96), inset 1px 0 0 rgba(255, 255, 255, 0.68), inset 0 -1px 0 rgba(15, 17, 21, 0.04);
+  --lg-border: rgba(255, 255, 255, 0.82);
+  --lg-border-hover: rgba(17, 18, 21, 0.22);
+  --lg-shadow: 0 20px 44px -22px rgba(15, 18, 25, 0.12), 0 2px 10px -2px rgba(15, 18, 25, 0.05);
+  --lg-shadow-hover: 0 28px 58px -20px rgba(15, 18, 25, 0.18), 0 6px 18px -4px rgba(15, 18, 25, 0.07);
+  --lg-glint: rgba(255, 255, 255, 0.72);
+  --lg-primary-bg: linear-gradient(180deg, #1c1e22 0%, #111215 100%);
+  --lg-primary-bg-hover: linear-gradient(180deg, #282b30 0%, #17191d 100%);
+  --lg-primary-ink: #ffffff;
+  --lg-primary-shadow: 0 10px 24px -10px rgba(15, 17, 21, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  --lg-hero-grad: linear-gradient(108deg, #111215 0%, #3f444d 45%, #111215 100%);
+  --lg-input-bg: rgba(255, 255, 255, 0.70);
+  --lg-thumb-bg: linear-gradient(135deg, rgba(228, 230, 235, 0.85), rgba(238, 240, 244, 0.85));
+  --lg-runbar-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.86) 0%, rgba(244, 246, 248, 0.72) 100%);
+  --lg-runbar-warn-bg: linear-gradient(135deg, rgba(255, 250, 240, 0.86) 0%, rgba(250, 241, 224, 0.74) 100%);
+  --lg-runbar-warn-border: rgba(180, 125, 36, 0.28);
+  --lg-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #08090c;
+  --panel: rgba(255, 255, 255, 0.045);
+  --panel2: rgba(255, 255, 255, 0.032);
+  --nav-bg: rgba(255, 255, 255, 0.04);
+  --line: rgba(255, 255, 255, 0.085);
+  --line-strong: rgba(255, 255, 255, 0.19);
+  --ink: #f4f4f6;
+  --ink2: #a0a4ae;
+  --ink3: #6c717d;
+  --ok: #6ee7b7;
+  --warn: #eab676;
+  --bad: #f28b82;
+  --accent: #f4f4f6;
+  --accent2: #d4d8e0;
+  --accent-soft: rgba(255, 255, 255, 0.08);
+
+  /* 曜石水银 · 暗房烟熏水晶与月光折射（彻底去青紫霓虹） */
+  --lg-canvas: radial-gradient(115% 85% at 18% 6%, #14161c 0%, #090a0d 54%, #050608 100%);
+  --lg-orb-1: radial-gradient(circle at 38% 38%, rgba(255, 255, 255, 0.095), rgba(210, 218, 230, 0.04) 46%, transparent 72%);
+  --lg-orb-2: radial-gradient(circle at 50% 50%, rgba(196, 206, 222, 0.085), rgba(148, 160, 180, 0.035) 46%, transparent 72%);
+  --lg-orb-3: radial-gradient(circle at 50% 50%, rgba(235, 224, 206, 0.06), rgba(180, 172, 160, 0.02) 46%, transparent 72%);
+  --lg-surface: linear-gradient(148deg, rgba(255, 255, 255, 0.072) 0%, rgba(255, 255, 255, 0.022) 55%, rgba(255, 255, 255, 0.042) 100%);
+  --lg-surface-strong: linear-gradient(148deg, rgba(255, 255, 255, 0.11) 0%, rgba(24, 26, 32, 0.78) 100%);
+  --lg-surface-subtle: linear-gradient(148deg, rgba(255, 255, 255, 0.046) 0%, rgba(255, 255, 255, 0.016) 100%);
+  --lg-rim: inset 0 1px 0 rgba(255, 255, 255, 0.20), inset 1px 0 0 rgba(255, 255, 255, 0.08), inset 0 -1px 0 rgba(0, 0, 0, 0.45);
+  --lg-border: rgba(255, 255, 255, 0.11);
+  --lg-border-hover: rgba(255, 255, 255, 0.28);
+  --lg-shadow: 0 24px 64px -22px rgba(0, 0, 0, 0.78), 0 4px 18px -4px rgba(0, 0, 0, 0.48);
+  --lg-shadow-hover: 0 34px 78px -20px rgba(0, 0, 0, 0.88), 0 0 28px -10px rgba(255, 255, 255, 0.14);
+  --lg-glint: rgba(255, 255, 255, 0.11);
+  --lg-primary-bg: linear-gradient(180deg, #ffffff 0%, #e4e6eb 100%);
+  --lg-primary-bg-hover: linear-gradient(180deg, #ffffff 0%, #f3f4f7 100%);
+  --lg-primary-ink: #090a0d;
+  --lg-primary-shadow: 0 10px 28px -10px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 1);
+  --lg-hero-grad: linear-gradient(108deg, #ffffff 0%, #b8bec9 46%, #ffffff 100%);
+  --lg-input-bg: rgba(0, 0, 0, 0.34);
+  --lg-thumb-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.35));
+  --lg-runbar-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.025) 100%);
+  --lg-runbar-warn-bg: linear-gradient(135deg, rgba(234, 182, 118, 0.13) 0%, rgba(255, 255, 255, 0.03) 100%);
+  --lg-runbar-warn-border: rgba(234, 182, 118, 0.32);
+}
+
+/* ---------- 主题切换瞬间屏蔽单元素残影过渡 ---------- */
+:root.vh-theme-switching *,
+:root.vh-theme-switching *::before,
+:root.vh-theme-switching *::after {
+  transition: none !important;
+}
+
+/* ---------- 底层原生 WebGL 静水面画布（纯 GPU 着色器，静止时 0 开销） ---------- */
+html {
+  background: var(--bg);
+}
+html[data-theme] body.workspace-page {
+  background: var(--lg-canvas);
+  color: var(--ink);
+  position: relative;
+  min-height: 100vh;
+}
+body.workspace-page > *:not(.vh-water-canvas):not(.workspace-nav):not(.vh-pane-stage):not(.toast):not(.pub-modal) {
+  position: relative;
+  z-index: 1;
+}
+.vh-water-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ---------- 常驻保活多视图壳层（Keep-Alive 0ms 切换，零整页重载、零闪屏） ---------- */
+html.vh-pane-mode,
+html.vh-pane-mode body.workspace-page {
+  background: transparent !important;
+  padding-left: 0 !important;
+}
+html.vh-pane-mode .workspace-nav {
+  display: none !important;
+}
+body.vh-host-hidden > *:not(.vh-water-canvas):not(.workspace-nav):not(.vh-pane-stage):not(.toast):not(.pub-modal) {
+  display: none !important;
+}
+body.workspace-page > .vh-pane-stage {
+  position: fixed;
+  inset: 0 0 0 236px;
+  z-index: 2;
+  pointer-events: none;
+}
+.vh-pane-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s var(--lg-ease);
+}
+.vh-pane-frame.is-active.is-ready {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+@media (max-width: 1100px) {
+  .vh-pane-stage { inset: 0 0 0 204px; }
+}
+@media (max-width: 760px) {
+  .vh-pane-stage { inset: 56px 0 0 0; }
+}
+@keyframes vhMercurySheen {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ---------- 悬浮烟熏水晶侧边栏 ---------- */
+.workspace-page {
+  padding-left: 236px;
+}
+.workspace-nav {
+  view-transition-name: vh-sidebar;
+  inset: 14px auto 14px 14px;
+  width: 212px;
+  padding: 26px 14px 18px;
+  border-radius: 22px;
+  background: var(--lg-surface);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-rim), var(--lg-shadow);
+  transition: background 0.35s var(--lg-ease), border-color 0.35s var(--lg-ease), box-shadow 0.35s var(--lg-ease);
+}
+.workspace-brand {
+  transition: transform 0.3s var(--lg-ease);
+}
+.workspace-brand:hover {
+  transform: translateY(-1px);
+}
+.workspace-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: var(--lg-surface-strong);
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-rim);
+}
+.workspace-links {
+  position: relative;
+}
+.workspace-links a {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 13px;
+  padding: 10px 13px;
+  border: 1px solid transparent;
+  color: var(--ink2);
+  transition: color 0.28s var(--lg-ease), transform 0.28s var(--lg-ease);
+}
+.workspace-links a svg {
+  transition: transform 0.32s var(--lg-ease), opacity 0.25s var(--lg-ease);
+}
+.workspace-links a:hover {
+  color: var(--ink);
+}
+.workspace-links a:hover svg {
+  transform: scale(1.06);
+}
+.workspace-links a[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+/* 未启用液态滑轨时的静态兜底（如减弱动态效果模式） */
+.workspace-links:not(.vh-nav-fluid) a:hover {
+  background: var(--panel2);
+  border-color: var(--line);
+}
+.workspace-links:not(.vh-nav-fluid) a[aria-current="page"] {
+  background: var(--lg-surface-strong);
+  border-color: var(--lg-border-hover);
+  box-shadow: var(--lg-rim), 0 8px 20px -12px rgba(0, 0, 0, 0.35);
+}
+/* 液态水珠滑轨本体：单枚连续折射玻璃透镜在按钮间平滑流动 */
+.workspace-links.vh-nav-fluid a,
+.workspace-links.vh-nav-fluid a:hover,
+.workspace-links.vh-nav-fluid a[aria-current="page"] {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.vh-nav-liquid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: 13px;
+  pointer-events: none;
+  will-change: transform, width, height;
+  transform-origin: center;
+  background:
+    radial-gradient(120px circle at var(--lx, 50%) var(--ly, 50%), var(--lg-glint), transparent 72%),
+    var(--lg-surface-strong);
+  border: 1px solid var(--lg-border-hover);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+    0 10px 26px -12px rgba(0, 0, 0, 0.45);
+  transition: box-shadow 0.28s var(--lg-ease), border-color 0.28s var(--lg-ease), filter 0.22s var(--lg-ease);
+}
+:root[data-theme="light"] .vh-nav-liquid {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(15, 17, 21, 0.05),
+    0 10px 24px -12px rgba(15, 18, 25, 0.16);
+}
+.vh-nav-liquid.is-pressed {
+  filter: brightness(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    0 4px 14px -6px rgba(0, 0, 0, 0.45);
+}
+
+.vh-theme-switch,
+.workspace-view-tabs [role="tab"] {
+  position: relative;
+  overflow: hidden;
+}
+.vh-theme-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: auto;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--lg-border);
+  background: var(--lg-surface-subtle);
+  box-shadow: var(--lg-rim);
+  color: var(--ink);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: transform 0.28s var(--lg-ease), border-color 0.28s var(--lg-ease), background 0.28s var(--lg-ease), box-shadow 0.28s var(--lg-ease);
+}
+.vh-theme-switch:hover {
+  border-color: var(--lg-border-hover);
+  background: var(--lg-surface-strong);
+  transform: translateY(-1px);
+}
+.vh-theme-switch:active {
+  transform: scale(0.975);
+}
+.vh-theme-switch .vh-theme-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffffff, #9ca3af);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.55);
+  flex: none;
+}
+:root[data-theme="light"] .vh-theme-switch .vh-theme-dot {
+  background: radial-gradient(circle at 35% 35%, #4b5563, #111215);
+  box-shadow: 0 0 6px rgba(17, 18, 21, 0.25);
+}
+.workspace-foot {
+  margin-top: 0;
+  border-top-color: var(--line);
+}
+.workspace-foot strong::before {
+  background: var(--ok);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--ok) 60%, transparent);
+}
+.workspace-page > header {
+  background: transparent;
+  border-bottom-color: var(--line);
+}
+
+/* ---------- 标题液态银光质感（静态零重绘） ---------- */
+.creation-intro h2,
+.settings-intro h2 {
+  background: var(--lg-hero-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---------- 烟熏水晶玻璃主容器 & 卡片（去除重度实时模糊，避免底层 WebGL 波动时触发右侧整页重算） ---------- */
+.newbox.composer,
+#list .card,
+.newbox#queueBox,
+.discovery-topic,
+.settings-page .card,
+.pub-modalbox,
+.queue-body .timing-card {
+  position: relative;
+  background: var(--lg-surface);
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-rim), var(--lg-shadow);
+  transition: transform 0.32s var(--lg-ease), border-color 0.28s var(--lg-ease), box-shadow 0.32s var(--lg-ease);
+}
+.newbox.composer,
+#list .card,
+.discovery-topic,
+.settings-page .card,
+.queue-body .timing-card {
+  border-radius: 18px;
+}
+.newbox.composer::before,
+#list .card::before,
+.discovery-topic::before,
+.settings-page .card::before,
+.queue-body .timing-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(280px circle at var(--mx, -999px) var(--my, -999px), var(--lg-glint), transparent 72%);
+  opacity: 0;
+  transition: opacity 0.35s var(--lg-ease);
+  z-index: 0;
+}
+.newbox.composer:hover::before,
+#list .card:hover::before,
+.discovery-topic:hover::before,
+.settings-page .card:hover::before,
+.queue-body .timing-card:hover::before {
+  opacity: 1;
+}
+.newbox.composer > *,
+#list .card > *,
+.discovery-topic > *,
+.settings-page .card > *,
+.queue-body .timing-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+#list .card:hover,
+.discovery-topic:hover,
+.settings-page .card:hover {
+  transform: translateY(-3px);
+  border-color: var(--lg-border-hover);
+  box-shadow: var(--lg-rim), var(--lg-shadow-hover);
+}
+#list .thumb {
+  background: var(--lg-thumb-bg);
+}
+#list .thumb img {
+  transition: transform 0.6s var(--lg-ease);
+}
+#list .card:hover .thumb img {
+  transform: scale(1.03);
+}
+
+.newbox.composer:focus-within {
+  border-color: var(--lg-border-hover);
+  box-shadow: var(--lg-rim), var(--lg-shadow-hover);
+}
+.composer .choice {
+  border-radius: 11px;
+  transition: background 0.26s var(--lg-ease), border-color 0.26s var(--lg-ease);
+}
+.composer .choice:has(input:checked) {
+  background: var(--lg-surface-strong);
+  border-color: var(--lg-border-hover);
+  box-shadow: var(--lg-rim);
+}
+.composer textarea,
+.composer select,
+.project-search,
+.queue-body input[type=text],
+.newbox input[type=text],
+.newbox select,
+#queueBox #discQuery,
+#queueBox #discMode,
+.discovery-options input[type=number],
+.timing-row input[type=time],
+.timing-row input[type=number],
+.pub-field input,
+.pub-field textarea,
+.pub-field select,
+.settings-page select,
+.settings-page input[type=password],
+.settings-page input[type=text] {
+  background: var(--lg-input-bg);
+  border-color: var(--line);
+  color: var(--ink);
+  transition: border-color 0.25s var(--lg-ease), box-shadow 0.25s var(--lg-ease), background 0.25s var(--lg-ease);
+}
+.composer textarea {
+  background: transparent;
+}
+.project-search {
+  border-radius: 999px;
+  padding: 8px 14px;
+  box-shadow: var(--lg-rim);
+}
+.project-search:focus-within,
+.pub-field input:focus,
+.pub-field textarea:focus,
+.pub-field select:focus,
+#queueBox #discQuery:focus,
+#queueBox #discMode:focus {
+  border-color: var(--lg-border-hover);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---------- 极简高端液态按钮（纯瓷白 / 纯曜黑，零嵌套模糊开销） ---------- */
+.btn,
+.pub-btn,
+.settings-page button {
+  position: relative;
+  overflow: hidden;
+  border-radius: 11px;
+  background: var(--lg-surface-subtle);
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-rim);
+  color: var(--ink);
+  transition: transform 0.24s var(--lg-ease), background 0.24s var(--lg-ease), border-color 0.24s var(--lg-ease), box-shadow 0.24s var(--lg-ease), color 0.24s var(--lg-ease);
+}
+.btn:hover:not(:disabled),
+.pub-btn:hover:not(:disabled),
+.settings-page button:hover:not(:disabled) {
+  background: var(--lg-surface-strong);
+  border-color: var(--lg-border-hover);
+  transform: translateY(-1px);
+}
+.btn:active:not(:disabled),
+.pub-btn:active:not(:disabled),
+.settings-page button:active:not(:disabled) {
+  transform: scale(0.975);
+}
+.btn.primary,
+#list .actions .primary,
+.pub-btn.primary,
+.settings-page button.primary {
+  background: var(--lg-primary-bg);
+  border-color: transparent;
+  color: var(--lg-primary-ink);
+  font-weight: 600;
+  box-shadow: var(--lg-primary-shadow);
+}
+.btn.primary::after,
+.pub-btn.primary::after,
+.settings-page button.primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 24%, rgba(255, 255, 255, 0.34) 50%, transparent 76%);
+  transform: translateX(-125%);
+  transition: transform 0.65s var(--lg-ease);
+  pointer-events: none;
+}
+.btn.primary:hover:not(:disabled)::after,
+.pub-btn.primary:hover:not(:disabled)::after,
+.settings-page button.primary:hover:not(:disabled)::after {
+  transform: translateX(125%);
+}
+.btn.primary:hover:not(:disabled),
+#list .actions .primary:hover:not(:disabled),
+.pub-btn.primary:hover:not(:disabled),
+.settings-page button.primary:hover:not(:disabled) {
+  background: var(--lg-primary-bg-hover);
+  border-color: transparent;
+  color: var(--lg-primary-ink);
+  box-shadow: var(--lg-primary-shadow), 0 8px 24px -8px rgba(0, 0, 0, 0.32);
+}
+
+/* ---------- 作品卡片主/次按钮统一比例与玻璃质感 ---------- */
+#list .actions {
+  gap: 8px;
+  padding-top: 6px;
+}
+#list .actions .btn,
+#list .actions .primary {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+#list .actions .btn:not(.primary) {
+  background: var(--lg-surface-subtle);
+  border-color: var(--lg-border);
+  color: var(--ink);
+}
+#list .actions .btn:not(.primary):hover:not(:disabled) {
+  background: var(--lg-surface-strong);
+  border-color: var(--lg-border-hover);
+}
+#list .project-secondary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+#list .project-secondary .btn {
+  min-height: 32px;
+  min-width: 68px;
+  padding: 0 14px;
+  margin: 0;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  background: var(--lg-surface-subtle);
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-rim);
+  color: var(--ink2);
+}
+#list .project-secondary .btn:hover:not(:disabled) {
+  background: var(--lg-surface-strong);
+  border-color: var(--lg-border-hover);
+  color: var(--ink);
+}
+#list .project-secondary .btn.danger {
+  margin-left: auto;
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 8%, transparent);
+  border-color: color-mix(in srgb, var(--bad) 26%, transparent);
+}
+#list .project-secondary .btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bad) 15%, transparent);
+  border-color: color-mix(in srgb, var(--bad) 48%, transparent);
+  color: var(--bad);
+}
+#list .files .tag {
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: var(--lg-surface-subtle);
+  border-color: var(--lg-border);
+  color: var(--ink2);
+}
+
+/* ---------- 选题 / 队列液态胶囊页签 ---------- */
+.workspace-view-tabs {
+  gap: 6px;
+  border-bottom: 0;
+  padding: 5px;
+  border-radius: 14px;
+  background: var(--lg-surface-subtle);
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-rim);
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.workspace-view-tabs [role="tab"] {
+  border-bottom: 0;
+  border-radius: 10px;
+  padding: 8px 16px;
+  color: var(--ink2);
+  transition: background 0.28s var(--lg-ease), color 0.25s var(--lg-ease), box-shadow 0.28s var(--lg-ease);
+}
+.workspace-view-tabs [role="tab"]:hover {
+  color: var(--ink);
+}
+.workspace-view-tabs [role="tab"][aria-selected="true"] {
+  background: var(--lg-surface-strong);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: var(--lg-rim), 0 6px 16px -8px rgba(0, 0, 0, 0.24);
+}
+.discovery-settings-body,
+.topic-receipt,
+.topic-suggestion {
+  background: var(--lg-surface-subtle);
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-rim);
+  border-radius: 14px;
+}
+.topic-more-body {
+  background: var(--lg-surface-strong);
+  backdrop-filter: blur(30px) saturate(150%);
+  -webkit-backdrop-filter: blur(30px) saturate(150%);
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-rim), var(--lg-shadow);
+}
+.queue-body .queue-item,
+#queuePanel .queue-item {
+  background: var(--lg-surface-subtle);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  transition: border-color 0.25s var(--lg-ease), background 0.25s var(--lg-ease);
+}
+#queuePanel .queue-item:hover {
+  border-color: var(--lg-border-hover);
+  background: var(--lg-surface-strong);
+}
+
+/* ---------- 运行中状态条与卡片（彻底修复浅色底色透出，改为克制水银/琥珀玻璃） ---------- */
+.runbar {
+  background: var(--lg-runbar-bg);
+  border: 1px solid var(--lg-border);
+  border-radius: 16px;
+  color: var(--ink);
+  box-shadow: var(--lg-rim), var(--lg-shadow);
+}
+.runbar.warn {
+  background: var(--lg-runbar-warn-bg);
+  border-color: var(--lg-runbar-warn-border);
+  color: var(--ink);
+}
+.runbar b { color: var(--ok); }
+.runbar.warn b { color: var(--warn); }
+.runbar .meta,
+.runbar .step,
+.runbar .doing,
+.runbar small { color: var(--ink2); }
+.runbar .btn {
+  background: var(--lg-surface-subtle);
+  border-color: var(--lg-border);
+  color: var(--ink);
+}
+.runbar .btn.danger {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 36%, transparent);
+}
+#list .card.running,
+.discovery-topic[aria-busy="true"] {
+  border-color: var(--lg-border-hover);
+  background-image:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.09)),
+    var(--lg-surface);
+  background-size: 240% 240%, 100% 100%;
+  animation: vhMercurySheen 8s ease-in-out infinite;
+}
+
+.toast {
+  background: var(--lg-surface-strong);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--lg-border-hover);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 11px 20px;
+  box-shadow: var(--lg-rim), var(--lg-shadow-hover);
+}
+
+/* ---------- 发布台液态玻璃专项适配（移除大卡片重度实时模糊，确保切页零卡顿） ---------- */
+.publish-page #pubTop {
+  background: var(--lg-surface-subtle);
+  border-bottom: 1px solid var(--lg-border);
+}
+.publish-page #pubLeft {
+  background: transparent;
+  border-right-color: var(--line);
+}
+.publish-page #pubRight {
+  background: transparent;
+}
+.publish-page .pub-card {
+  padding: 20px 22px;
+  border-radius: 18px;
+  background: var(--lg-surface);
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-rim), var(--lg-shadow);
+  margin-bottom: 18px;
+}
+.publish-page .pub-card + .pub-card {
+  padding-top: 20px;
+  border-top: 1px solid var(--lg-border);
+}
+.publish-page .pub-item {
+  border-radius: 12px;
+  border: 1px solid transparent;
+  transition: background 0.25s var(--lg-ease), border-color 0.25s var(--lg-ease), transform 0.25s var(--lg-ease);
+}
+.publish-page .pub-item:hover {
+  background: var(--panel2);
+  border-color: var(--line);
+  transform: translateX(2px);
+}
+.publish-page .pub-row.on .pub-item {
+  background: var(--lg-surface-strong);
+  border-color: var(--lg-border-hover);
+  box-shadow: var(--lg-rim);
+}
+.publish-page #pubActions {
+  background: var(--lg-surface-strong);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid var(--lg-border);
+  box-shadow: 0 -12px 36px -14px rgba(0, 0, 0, 0.28);
+}
+.publish-page .pub-cover {
+  background: var(--lg-input-bg);
+  border-color: var(--lg-border);
+  border-radius: 12px;
+}
+.publish-page .pub-cover.bad {
+  background: rgba(242, 139, 130, 0.08);
+  border-color: rgba(242, 139, 130, 0.30);
+}
+.publish-page .pub-partition-rec {
+  background: var(--lg-surface-subtle);
+  border-color: var(--lg-border);
+  border-radius: 12px;
+}
+.publish-page .pub-partition-rec.ok {
+  background: var(--lg-surface-strong);
+  border-color: var(--lg-border-hover);
+  color: var(--ink);
+}
+.publish-page .pub-json {
+  background: var(--lg-input-bg);
+  color: var(--ink2);
+  border: 1px solid var(--line);
+}
+.publish-page .pub-block {
+  background: var(--lg-surface-subtle);
+  border-color: var(--lg-border);
+}
+.publish-page .pub-calendar-day {
+  background: var(--lg-surface-subtle);
+  border: 1px solid var(--line);
+}
+#pubTop .pub-account {
+  border-radius: 999px;
+  padding: 6px 13px;
+  background: var(--lg-surface-subtle);
+  border: 1px solid var(--lg-border);
+  color: var(--ink2);
+}
+#pubTop .pub-account.ok {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 36%, transparent);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+}
+
+/* ---------- 暗色模式微调（克制徽章与表单对比） ---------- */
+:root[data-theme="dark"] .settings-page .pill.on,
+:root[data-theme="dark"] #list .badge {
+  background: rgba(110, 231, 183, 0.12);
+  border-color: rgba(110, 231, 183, 0.28);
+  color: var(--ok);
+}
+:root[data-theme="dark"] #list .badge .d {
+  background: var(--ok);
+}
+:root[data-theme="dark"] .settings-page fieldset {
+  background: var(--lg-input-bg);
+  border-color: var(--line);
+}
+:root[data-theme="dark"] ::selection {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+/* ---------- 响应式与无障碍 ---------- */
+@media (max-width: 1100px) {
+  .workspace-page { padding-left: 204px; }
+  .workspace-nav { width: 184px; inset: 10px auto 10px 10px; border-radius: 18px; }
+}
+@media (max-width: 760px) {
+  .workspace-page { padding-left: 0; }
+  .workspace-nav {
+    position: sticky;
+    top: 0;
+    inset: auto;
+    width: 100%;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    border-top: 0;
+    padding: 10px 14px;
+    gap: 10px;
+  }
+  .vh-theme-switch {
+    width: auto;
+    margin: 0 0 0 auto;
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+  .vh-theme-switch .vh-theme-label {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vh-liquid-orb,
+  .vh-liquid-caustic,
+  .creation-intro h2,
+  .settings-intro h2,
+  #list .card.running,
+  .discovery-topic[aria-busy="true"] {
+    animation: none !important;
+  }
+  .newbox.composer::before,
+  #list .card::before,
+  .discovery-topic::before,
+  .settings-page .card::before,
+  .queue-body .timing-card::before,
+  .btn.primary::after,
+  .pub-btn.primary::after,
+  .settings-page button.primary::after {
+    display: none !important;
+  }
+}

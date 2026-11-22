@@ -71,11 +71,11 @@ export function cookiesComplete(cookies) {
 /* 投稿权限体检：在真正上传前先问一句“这个账号能投稿吗”。
  * 真实痛点是上传 26MB 视频、传完封面上传，最后提交才被拒；这里提前暴露。
  * 只读接口，不创建草稿、不投稿。 */
-export async function checkPublishReady(api, { fetch: fetchImpl = globalThis.fetch, ua = UA, origin = ORIGIN } = {}) {
+export async function checkPublishReady(api, { fetch: fetchImpl = globalThis.fetch, ua = UA, origin = ORIGIN, probeUpload = true, whoamiResult = null } = {}) {
   const checks = [];
   const add = (name, ok, note) => checks.push({ name, ok, note: note || '' });
 
-  const who = await api.whoami();
+  const who = whoamiResult || await api.whoami();
   add('登录状态', who.loggedIn, who.loggedIn ? `${who.name || ''}（LV${who.level ?? '?'}）` : (who.message || '未登录'));
 
   // 分区接口能通，说明创作中心侧的登录态与设备标识都被接受。
@@ -86,12 +86,14 @@ export async function checkPublishReady(api, { fetch: fetchImpl = globalThis.fet
     add('创作中心接口', false, error.message);
   }
 
-  // 预上传只申请线路，不传数据；能拿到 endpoint 才说明上传链路可用。
-  try {
-    const bucket = await api.preupload({ name: 'probe.mp4', size: 1024 });
-    add('上传线路', Boolean(bucket?.endpoint), bucket?.endpoint ? '已获得上传线路' : '没有返回 endpoint');
-  } catch (error) {
-    add('上传线路', false, error.message);
+  // 仅在显式需要探测上传线路时调用 preupload；日常浏览发布台不主动戳上传接口，避免触发 B 站 HTTP 406 限频。
+  if (probeUpload) {
+    try {
+      const bucket = await api.preupload({ name: 'probe.mp4', size: 1024 });
+      add('上传线路', Boolean(bucket?.endpoint), bucket?.endpoint ? '已获得上传线路' : '没有返回 endpoint');
+    } catch (error) {
+      add('上传线路', false, error.message);
+    }
   }
 
   return { ok: checks.every(item => item.ok), checks };
