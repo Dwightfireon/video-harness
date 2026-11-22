@@ -107,7 +107,7 @@ async function openHistory(page, id) { if (await page.getAttribute('#discHistory
 
 test('问题卡片先展示问题价值与受众，无来源也可保存，未调查不出现入队按钮', async t => {
   const h = await setup(t, { extra: [questionTopic('q')] }), { page } = h, q = card(page, 'q');
-  assert.equal(await q.locator(':scope > h3').textContent(), questionTopic('q').coreQuestion);
+  assert.equal(await q.locator(':scope > h3').textContent(), questionTopic('q').topic);
   assert.match(await q.locator('.topic-summary').textContent(), /弄清省时与工作量/);
   assert.match(await q.locator('.topic-audience').textContent(), /普通上班族/);
   assert.match(await q.locator('.topic-evidence-meta').textContent(), /尚未调查/);
@@ -134,7 +134,7 @@ test('调查只提交当前题ID：忽略未保存方向与数量，完成后原
   Object.assign(saved, { sources: ['https://example.com/work'], research: researchFixture(), researchAssessment: { version: 1, status: 'leads', finding: '已有一个具体案例，还需要核对适用范围。', gaps: ['缺少不同岗位的对照'], suggestedQuestion: '' } });
   h.revision++; await done(h, [saved]);
   assert.equal(await page.evaluate(() => window.originalQ === document.querySelector('[data-topic-id="q"]')), true);
-  assert.equal(await q.locator(':scope > h3').textContent(), questionTopic('q').coreQuestion);
+  assert.equal(await q.locator(':scope > h3').textContent(), questionTopic('q').topic);
   assert.match(await q.locator('.topic-evidence-meta').textContent(), /已有研究线索.*不代表已回答/);
   assert.equal(await q.getByRole('button', { name: '想做并加入队列', exact: true }).isEnabled(), true);
   assert.equal(h.queue.length, 0, '调查完成不自动入队');
@@ -151,7 +151,7 @@ test('材料不足与前提需调整仍保留问题，建议问法只作文字�
   const revised = questionTopic('q', { researchAssessment: { version: 1, status: 'reframe', finding: '现有材料不足以支持原来猜测的前提。', gaps: ['需要区分任务和人群'], suggestedQuestion: '哪些任务真正减少了工作量？<img src=x onerror="alert(1)">' } });
   const h = await setup(t, { extra: [revised] }), { page } = h, q = card(page, 'q');
   assert.match(await q.locator('.topic-evidence-meta').textContent(), /建议调整问题.*原题未改动/);
-  assert.equal(await q.locator(':scope > h3').textContent(), revised.coreQuestion);
+  assert.equal(await q.locator(':scope > h3').textContent(), revised.topic);
   await q.locator(':scope > details > summary').click();
   assert.match(await q.locator('dl').textContent(), /建议问法（尚未采用）.*哪些任务/s);
   assert.equal(await q.locator('img').count(), 0);

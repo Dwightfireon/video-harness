@@ -241,12 +241,12 @@ main{padding:14px 28px 60px;display:grid;grid-template-columns:repeat(auto-fill,
     <h2 id="discoveryTitle">发现下一支视频</h2>
     <p class="discovery-intro">先发现值得问的问题，再为感兴趣的问题找依据。</p>
     <div class="discovery-controls">
-       <label class="discovery-query" for="discQuery">探索方向<input type="text" id="discQuery" maxlength="1000" placeholder="例如：AI 工具如何影响普通人的工作"></label>
+       <label class="discovery-query" for="discQuery">探索方向<input type="text" id="discQuery" maxlength="1000" placeholder="例如：ChatGPT 或 AI 工具如何影响普通人的工作"></label>
+       <label class="discovery-mode" for="discMode">查找模式<select id="discMode"><option value="focused">聚焦方向（离线）</option><option value="recent">近期动态（轻联网）</option><option value="explore">拓展探索（离线）</option></select></label>
        <button class="btn primary" id="discBtn" type="button">查找选题</button>
     </div>
     <details id="discoverySettings" class="discovery-settings"><summary>查找设置与偏好</summary><div class="discovery-settings-body">
     <div class="discovery-options">
-       <label for="discMode">查找模式<select id="discMode"><option value="focused">聚焦方向</option><option value="explore">拓展探索</option></select></label>
        <label for="discCount">每批数量<input type="number" id="discCount" min="1" max="10" value="3"></label>
        <button class="btn" id="discConfigSave" type="button">保存查找设置</button>
     </div>
@@ -337,11 +337,13 @@ main{padding:14px 28px 60px;display:grid;grid-template-columns:repeat(auto-fill,
   </section>
   <section id="queuePanel" role="tabpanel" aria-labelledby="queueTab" hidden>
   <h2>待做队列</h2>
-  <p class="format-hint">加入只排队；可点「去做」立即制作，或在「自动化」里启用定时生成。</p>
+  <p class="format-hint">可连续加入多个选题；点「按顺序连续制作」后前一支成片会自动接下一支，遇错立即暂停。</p>
   <div class="row queue-add">
     <input type="text" id="queueTopic" aria-label="新选题" placeholder="加一个选题：一句话写清对象和问题">
     <button class="btn" id="queueAdd" type="button">加入队列</button>
+    <button class="btn primary" id="queueRunnerBtn" type="button" hidden>按顺序连续制作</button>
   </div>
+  <div id="queueRunnerMsg" class="format-hint" role="status" hidden></div>
   <div class="row queue-bulk" id="queueBulk" hidden>
     <label class="queue-check">
       <input type="checkbox" id="queueSelectAll">
@@ -833,8 +835,47 @@ const QSTATE = { todo: '未开工', running: '在进行', done: '已完成', fai
  * 队列里已经不存在的 id 会被丢弃，避免"选中了一个已删的项"。 */
 const queuePicked = new Set();
 let queueRemoving = false;
+let queueRunnerBusy = false;
+let queuePollTimer = null;
 let lastQueue = null;
 const queueChanges = createQueueChanges();
+function queuePaintRunner(q) {
+  const btn = $('#queueRunnerBtn'), msg = $('#queueRunnerMsg');
+  if (!btn || !msg) return;
+  const items = q?.items || [], runner = q?.runner || null;
+  const todoItems = items.filter(item => item.state === 'todo');
+  const pickedTodos = todoItems.filter(item => queuePicked.has(item.id));
+  const hasRunning = items.some(item => item.state === 'running');
+  if (!runner) { btn.hidden = true; msg.hidden = true; return; }
+  if (runner.active) {
+    btn.hidden = false;
+    btn.className = 'btn danger';
+    btn.disabled = queueRunnerBusy;
+    btn.textContent = queueRunnerBusy ? '正在停止续跑…' : '停止续跑';
+    btn.title = '停止后续自动接力，不影响当前正在制作的视频';
+    msg.hidden = false;
+    msg.style.color = 'var(--ok)';
+    const left = runner.remaining ?? todoItems.length;
+    msg.textContent = `连续制作已开启（已完成 ${runner.completed || 0} 支，队列还剩 ${left} 支待做；当前成片后自动接下一支，遇错立即暂停）。`;
+    return;
+  }
+  btn.hidden = !todoItems.length;
+  btn.className = 'btn primary';
+  btn.disabled = queueRunnerBusy || !todoItems.length;
+  btn.textContent = queueRunnerBusy ? '正在开启…'
+    : pickedTodos.length ? `连续制作选中（${pickedTodos.length}）`
+    : hasRunning ? '当前完成后自动续跑'
+    : `按顺序连续制作（${todoItems.length}）`;
+  btn.title = pickedTodos.length ? '按队列顺序依次制作勾选的未开工项，遇错暂停' : '按队列顺序依次制作全部未开工项，遇错暂停';
+  if (runner.pausedReason) {
+    msg.hidden = false;
+    msg.style.color = 'var(--warn)';
+    msg.textContent = runner.pausedReason;
+  } else {
+    msg.hidden = true;
+    msg.textContent = '';
+  }
+}
 function queuePaintBulk(items) {
   const removable = items.filter(item => item.state !== 'running');
   const box = $('#queueBulk');
@@ -848,7 +889,8 @@ function queuePaintBulk(items) {
   btn.textContent = queueRemoving ? '正在移除…' : picked ? '移除选中（' + picked + '）' : '移除选中';
   label.textContent = items.length && !removable.length
     ? '队列里都是正在制作的项，无法移除'
-    : picked ? '已选 ' + picked + ' 项' : '可勾选后一次移除多项';
+    : picked ? '已选 ' + picked + ' 项' : '可勾选后批量移除或连续制作';
+  queuePaintRunner(lastQueue);
 }
 async function queueLoad() {
   try {
@@ -922,9 +964,22 @@ function paintQueue(q) {
     state.textContent = QSTATE[item.state] || item.state;
     row.append(topic, state);
 
-    /* 待做的项可以「拿去用」：填进上面的新建框并切到选题模式。
-     * 不直接开工——是否现在做由人决定；定时生成关着时尤其需要这一步。 */
+    const firstTodoId = items.find(entry => entry.state === 'todo')?.id;
     if (item.state === 'todo') {
+      if (item.id !== firstTodoId) {
+        const topBtn = document.createElement('button');
+        topBtn.className = 'btn';
+        topBtn.type = 'button';
+        topBtn.textContent = '置顶';
+        topBtn.title = '排到待做最前面';
+        topBtn.onclick = async () => {
+          topBtn.disabled = true;
+          try {
+            paintQueue(await requestJSON('/_api/schedule', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'move', id: item.id, direction: 'top' }) }));
+          } catch (e) { $('#queueMsg').textContent = '调整顺序失败：' + e.message; topBtn.disabled = false; }
+        };
+        row.appendChild(topBtn);
+      }
       /* 「去做」是一个完整动作：直接按这一项的选题建项目并开工。
        * 不再填进上面那个输入框——那个框留给"我自己想一个"。
        * 两个入口分开，点哪里就是哪里，不用再点第二次。 */
@@ -980,13 +1035,17 @@ function paintQueue(q) {
     box.appendChild(row);
   }
   queuePaintBulk(items);
-  /* 队列尾部的结论要跟定时开关一致：
-   * 定时关着时说「下一支会做」是错的——它不会自己做，得你点。 */
+  clearTimeout(queuePollTimer);
+  if (q.runner?.active || items.some(item => item.state === 'running')) {
+    queuePollTimer = setTimeout(() => { if (!document.hidden) void queueLoad(); }, 5000);
+  }
+  /* 队列尾部的结论要跟定时开关和续跑状态一致。 */
   const buildOn = Boolean(timing.build?.enabled);
   const running = items.find(item => item.state === 'running');
-  if (running) $('#queueMsg').textContent = '正在做：' + running.topic;
+  if (running) $('#queueMsg').textContent = '正在做：' + running.topic + (q.runner?.active ? '（完成后自动续跑下一支）' : '');
   else if (!q.next) $('#queueMsg').textContent = '队列里没有待做选题。';
-  else if (!buildOn) $('#queueMsg').textContent = '下一支待做：' + q.next + '（定时生成已关，可点这一项的「去做」）';
+  else if (q.runner?.active) $('#queueMsg').textContent = '即将自动开始：' + q.next;
+  else if (!buildOn) $('#queueMsg').textContent = '下一支待做：' + q.next + '（可点「去做」做单支，或点「按顺序连续制作」）';
   else $('#queueMsg').textContent = '下一支待做：' + q.next + '（等后台调度）';
 }
 
@@ -1036,6 +1095,25 @@ $('#queueAdd').onclick = async () => {
     $('#queueTopic').value = '';
   } catch (e) { $('#queueMsg').textContent = '加入失败：' + e.message; }
   finally { btn.disabled = false; }
+};
+$('#queueRunnerBtn').onclick = async () => {
+  if (queueRunnerBusy) return;
+  const active = Boolean(lastQueue?.runner?.active);
+  const todoPicked = (lastQueue?.items || []).filter(item => item.state === 'todo' && queuePicked.has(item.id)).map(item => item.id);
+  queueRunnerBusy = true;
+  queuePaintRunner(lastQueue);
+  try {
+    const body = active ? { action: 'stop' } : { action: 'start', ...(todoPicked.length ? { ids: todoPicked } : {}) };
+    const res = await requestJSON('/_api/schedule/runner', { method: 'POST', timeoutMs: 120000, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(res.error || '未能更新续跑状态');
+    await queueLoad();
+    load().catch(() => {});
+  } catch (e) {
+    $('#queueMsg').textContent = (active ? '停止续跑失败：' : '开启连续制作失败：') + e.message;
+  } finally {
+    queueRunnerBusy = false;
+    queuePaintRunner(lastQueue);
+  }
 };
 
 /* 这里只保存制作时间，不修改独立的每日发布排程。 */

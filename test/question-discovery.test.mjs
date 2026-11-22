@@ -71,8 +71,10 @@ if (process.argv[2] === 'api') { fs.appendFileSync('interrupts', 'interrupt\\n')
 const prompt = process.argv.at(-1), operation = prompt.includes('本轮唯一任务是调查现有问题') ? 'research' : 'questions';
 const spec = JSON.parse(fs.readFileSync('response.json', 'utf8'));
 const selected = process.argv[process.argv.indexOf('--agent') + 1];
+const modelIdx = process.argv.indexOf('-m');
+const model = modelIdx >= 0 ? process.argv[modelIdx + 1] : null;
 const config = process.env.OPENCODE_CONFIG_CONTENT ? JSON.parse(process.env.OPENCODE_CONFIG_CONTENT) : {};
-fs.appendFileSync('calls.jsonl', JSON.stringify({ operation, at: Date.now(), selected, agent: config.agents?.[selected],
+fs.appendFileSync('calls.jsonl', JSON.stringify({ operation, at: Date.now(), selected, model, agent: config.agents?.[selected],
   standalone: process.argv.includes('--standalone'), existingAgentPreserved: !!config.agents?.existing, fixtureProviderPreserved: !!config.providers?.fixture, prompt }) + '\\n');
 console.log(JSON.stringify({ type:'step_start', sessionID:'ses_question_fixture' }));
 setTimeout(() => {
@@ -111,6 +113,46 @@ test('default questions persist without any web tools/evidence and reject enqueu
   assert.match(calls()[0].selected, /^vh-questions-/);
   assert.equal(calls()[0].standalone, true, '临时agent必须由继承该环境的私有服务加载');
   assert.match(describeJob({ state: 'running', operation: 'questions', startedAt: Date.now() }).text, /构思/);
+});
+
+test('recent mode enables capped websearch-only ideation while still requiring explicit research before enqueue', async t => {
+  const websearch = i => ({ type: 'tool_use', part: { tool: 'websearch', state: { status: 'completed', input: { query: 'ChatGPT recent ' + i }, output: 'summary ' + i } } });
+  const { root, set, calls } = fixture(t, { questions: [websearch(1), websearch(2), text([question('ChatGPT 这周更新了什么实用功能？')])] });
+  const result = await discoverTopics(root, { query: 'ChatGPT', mode: 'recent' });
+  assert.equal(result.ok, true, result.reason);
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].mode, 'recent');
+  assert.equal(result.results[0].researchAssessment.status, 'unresearched');
+  assert.deepEqual(result.results[0].sources, []);
+  assert.equal(topicState(root).candidates[0].canEnqueue, false);
+  assert.deepEqual(calls()[0].agent.permissions, [
+    { action: 'websearch', resource: '*', effect: 'allow' },
+    { action: '*', resource: '*', effect: 'deny' },
+  ]);
+  assert.match(calls()[0].selected, /^vh-recent-/);
+  assert.match(describeJob({ state: 'running', operation: 'questions', mode: 'recent', startedAt: Date.now() }).text, /轻联网/);
+
+  set({ questions: [websearch(1), websearch(2), websearch(3), websearch(4), text([question('超限问题')])] });
+  const capped = await discoverTopics(root, { query: 'ChatGPT', mode: 'recent' });
+  assert.equal(capped.ok, false);
+  assert.equal(capped.aborted, 'budget');
+  assert.match(capped.reason, /轻搜次数超过上限/);
+
+  set({ questions: [{ type: 'tool_use', part: { tool: 'webfetch', state: { status: 'completed', input: { url: 'https://source.test/a' }, output: 'body' } } }, text([question('违禁抓全文')])] });
+  const fetched = await discoverTopics(root, { query: 'ChatGPT', mode: 'recent' });
+  assert.equal(fetched.ok, false);
+  assert.equal(fetched.aborted, 'budget');
+  assert.match(fetched.reason, /不允许读取原文/);
+
+  set({ questions: [text([])] });
+  const noSearch = await discoverTopics(root, { query: 'AI最近发展情况', mode: 'recent' });
+  assert.equal(noSearch.ok, false);
+  assert.match(noSearch.reason, /轻联网未能取得有效搜索结果/);
+
+  set({ questions: [{ type: 'tool_use', part: { tool: 'websearch', state: { status: 'error', input: { query: 'AI 2026' }, error: 'HTTP 402' } } }, text([])] });
+  const failedSearch = await discoverTopics(root, { query: 'AI最近发展情况', mode: 'recent' });
+  assert.equal(failedSearch.ok, false);
+  assert.match(failedSearch.reason, /402/);
 });
 
 test('真实CLI形状：退出1且stderr为空，仍显示stdout JSON中的具体错误，包括末尾无换行', async t => {
@@ -397,4 +439,40 @@ test('shared pure topic contract/re-export roundtrip and legacy admission remain
   assert.equal(updateTopicState(root, { action: 'accept', id: 'legacy' }).item.topic, '旧的无来源手工候选');
   const prompt = discoveryPrompt({ query: '普通用户的任务' });
   assert.match(prompt, /不依赖来源/); assert.match(prompt, /premises/); assert.doesNotMatch(prompt, /至少完成两个不同查询/);
+  assert.match(prompt, /文案去模板化/);
+  const recentPrompt = discoveryPrompt({ query: 'ChatGPT', mode: 'recent' });
+  assert.match(recentPrompt, /锚定本次搜到的具体近期变化或事件/);
+  const rPrompt = researchPrompt({ target: question(undefined, { id: 'q' }), date: '2026-11-22' });
+  assert.match(rPrompt, /核心结论/); assert.match(rPrompt, /大白话中文提炼/);
+});
+
+test('discovery and investigation follow provider-settings model unless explicitly overridden', async t => {
+  const { root, calls } = fixture(t);
+  const home = path.join(root, 'home');
+  const cfgDir = path.join(home, '.config', 'video-harness');
+  fs.mkdirSync(cfgDir, { recursive: true });
+  fs.writeFileSync(path.join(cfgDir, 'providers.json'), JSON.stringify({
+    preferredProvider: 'opencode',
+    models: { opencode: 'hy4-flash-free' },
+  }));
+  seed(root);
+  const qRes = await discoverTopics(root, { query: '离线翻译', home });
+  assert.equal(qRes.ok, true, qRes.reason);
+  const rRes = await discoverTopics(root, { operation: 'research', topicId: 'q', home });
+  assert.equal(rRes.ok, true, rRes.reason);
+  assert.deepEqual(calls().map(call => [call.operation, call.model]), [
+    ['questions', 'opencode/hy4-flash-free'],
+    ['research', 'opencode/hy4-flash-free'],
+  ]);
+
+  const explicit = await discoverTopics(root, { operation: 'research', topicId: 'q', home, model: 'fixture/explicit' });
+  assert.equal(explicit.ok, true, explicit.reason);
+  assert.equal(calls().at(-1).model, 'fixture/explicit');
+
+  fs.writeFileSync(path.join(cfgDir, 'providers.json'), '{broken json');
+  const countBefore = calls().length;
+  const broken = await discoverTopics(root, { operation: 'research', topicId: 'q', home });
+  assert.equal(broken.ok, false);
+  assert.match(broken.reason, /providers\.json|不会自动换渠道/);
+  assert.equal(calls().length, countBefore, '配置损坏时不得静默回落到其他渠道或启动执行器');
 });

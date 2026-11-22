@@ -49,7 +49,7 @@ async function main() {
   try {
     const result = await discoverTopics(root, config);
     finishJob(root, jobId, result.ok
-      ? { state: 'done', added: result.added || [], results: result.results || [], updated: result.updated, candidates: result.candidates || 0, skipped: result.skipped || 0, materialRejected: result.materialRejected || 0, recordPath: result.recordPath, warnings: result.warnings || [], ...(result.salvaged ? { salvaged: true } : {}) }
+      ? { state: 'done', added: result.added || [], results: result.results || [], updated: result.updated, candidates: result.candidates || 0, skipped: result.skipped || 0, materialRejected: result.materialRejected || 0, searchCount: result.searchCount || 0, recordPath: result.recordPath, warnings: result.warnings || [], ...(result.salvaged ? { salvaged: true } : {}) }
       : { state: 'failed', reason: result.reason || '检索失败', raw: result.raw || null, hints: result.hints || [], searchFailures: result.searchFailures || [] });
     return result.ok ? 0 : 1;
   } catch (error) {

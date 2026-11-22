@@ -1,8 +1,10 @@
 /* 选题组件的视觉边界，不改变队列、制作或发布组件。 */
 .discovery-panel{min-width:0;container-type:inline-size}
 .discovery-intro{font-size:13px;color:var(--ink2);margin:8px 0 24px}
-.discovery-controls{display:flex;gap:12px;align-items:end;margin:0 0 12px}
-.discovery-query{display:flex;flex:1;flex-direction:column;gap:8px;font-size:12px;color:var(--ink2);min-width:0}
+.discovery-controls{display:flex;gap:12px;align-items:end;margin:0 0 12px;flex-wrap:wrap}
+.discovery-query{display:flex;flex:1;flex-direction:column;gap:8px;font-size:12px;color:var(--ink2);min-width:min(240px,100%)}
+.discovery-mode{display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--ink2);min-width:0}
+#queueBox #discMode{min-height:45px;padding:10px 12px;font-size:13px;background:var(--panel)}
 #queueBox #discQuery{width:100%;min-width:0;padding:12px 14px;font-size:14px;background:var(--panel)}
 .discovery-controls #discBtn{padding:12px 20px;min-height:45px;border-radius:8px;white-space:nowrap;font-size:13px}
 .discovery-settings{margin:0 0 30px;font-size:12px;color:var(--ink2)}
@@ -28,10 +30,13 @@
 .topic-evidence{font-size:12px;line-height:1.9}
 .topic-evidence-source{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}
 .topic-evidence-source h4{font-size:12px;font-weight:500;margin:0 0 8px}
-.topic-evidence blockquote{margin:12px 0;padding-left:12px;border-left:2px solid var(--line-strong);white-space:pre-wrap;color:var(--ink2)}
+.topic-evidence-supports{margin:8px 0 6px;color:var(--ink);font-size:12.5px;line-height:1.75}
+.topic-evidence blockquote{margin:8px 0 10px;padding-left:12px;border-left:2px solid var(--line-strong);white-space:pre-wrap;color:var(--ink2);font-size:11.5px}
 .discovery-topic:has(>.topic-explanation[open])>.topic-summary{display:block;-webkit-line-clamp:unset}
 .discovery-topic dl{display:grid;grid-template-columns:4em minmax(0,1fr);gap:10px 12px;margin:18px 0;font-size:12px;line-height:1.9}
 .discovery-topic dt{color:var(--ink2)}.discovery-topic dd{margin:0;white-space:pre-wrap}
+.topic-dl-list{margin:0;padding-left:1.2em;display:grid;gap:4px}
+.topic-dl-list li{white-space:pre-wrap}
 .topic-meta,.topic-state,.topic-feedback-history{font-size:11px;color:var(--ink2);white-space:pre-wrap;line-height:1.8}
 .discovery-topic[data-topic-status=candidate]>.topic-state{display:none}
 .topic-sources{display:flex;gap:8px 12px;flex-wrap:wrap;font-size:12px;margin:14px 0}

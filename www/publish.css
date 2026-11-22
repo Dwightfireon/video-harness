@@ -20,6 +20,15 @@
 .pub-field input,.pub-field textarea,.pub-field select{background:var(--bg);padding:11px 12px;border-radius:8px;font-size:13px}
 .pub-field input:focus,.pub-field textarea:focus,.pub-field select:focus{border-color:var(--accent2);outline:2px solid var(--accent-soft);outline-offset:1px}
 .pub-field.needs input,.pub-field.needs select{border-color:#d5a69f}
+.pub-partition-tools{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.pub-partition-tools .pub-partition-search{margin-bottom:0;flex:1;min-width:0}
+.pub-partition-tools .pub-btn{flex:none;padding:8px 12px}
+.pub-partition-rec{margin:8px 0 0;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);font-size:12px;line-height:1.65;color:var(--ink2)}
+.pub-partition-rec.ok{border-color:#ccd7c5;background:var(--accent-soft);color:var(--ink)}
+.pub-partition-rec.bad{border-color:#e6c9c4;color:var(--bad)}
+.pub-partition-rec-alts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center}
+.pub-partition-rec-alts .pub-btn{padding:3px 9px;min-height:26px;font-size:11px}
+.pub-partition-advice{margin:7px 0 0}
 /* 封面：缩略图 + 文件信息 + 勾选一行排开；没封面时整块变灰而不是留下空框。 */
 .pub-cover{display:flex;align-items:center;gap:14px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-height:74px}
 .pub-cover.bad{border-color:#e6c9c4;background:#fdf8f7}

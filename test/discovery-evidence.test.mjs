@@ -86,25 +86,30 @@ test('日期校验拒绝不存在、未来和无法匹配的日期；兼容中�
   }
 });
 
-test('深度旧材料或未知发表日可推荐，但不能冒充最新；显式时间范围不可绕过', () => {
+test('深度旧材料或未知发表日可推荐，不因相对时间词误杀；显式起止日期区间仍严格校验', () => {
   const item = candidate({ kind: 'evergreen', evidence: [evidence({ publishedAt: null, publicationQuote: '', eventDate: null, eventQuote: '', sourceType: 'analysis' })] });
   const result = assess(item); assert.equal(result.ok, true);
   assert.ok(result.research.caveats.includes('来源发表日期未确认'));
   assert.ok(result.research.caveats.includes('未提供一手来源，需在写稿时继续追溯'));
-  assert.equal(assess(item, { window: discoveryWindow('最近7天', now) }).ok, false);
+  const relative = assess(item, { window: discoveryWindow('最近7天', now) });
+  assert.equal(relative.ok, true);
+  assert.ok(relative.research.caveats.includes('本题为长期机制材料，未按近期时间范围排除较早资料'));
+  assert.equal(assess(item, { window: discoveryWindow('2026-10-01 至 2026-10-31', now) }).ok, false);
   assert.equal(assess(candidate({ selectionReason: '非常好' })).ok, false);
   assert.equal(assess(candidate({ outline: '' })).ok, false);
   assert.equal(assess(candidate({ kind: 'best' })).ok, false);
 });
 
-test('时间范围采用UTC自然日、包含边界，且不默认排除优质旧材料', () => {
+test('时间范围采用自然日包含边界；今日放宽至近3天避免跨时区与隔夜新闻误杀', () => {
   assert.equal(discoveryWindow('高质量深度材料', now), null);
   assert.deepEqual(discoveryWindow('最近一周', now), { from: '2026-11-03', to: '2026-11-09' });
   assert.deepEqual(discoveryWindow('近3天', now), { from: '2026-11-07', to: '2026-11-09' });
+  assert.deepEqual(discoveryWindow('今日', now), { from: '2026-11-07', to: '2026-11-09' });
   assert.deepEqual(discoveryWindow('昨天', now), { from: '2026-11-08', to: '2026-11-08' });
-  assert.deepEqual(discoveryWindow('2026-10-01 至 2026-10-31', now), { from: '2026-10-01', to: '2026-10-31' });
+  assert.deepEqual(discoveryWindow('2026-10-01 至 2026-10-31', now), { from: '2026-10-01', to: '2026-10-31', explicit: true });
   assert.equal(assess(candidate(), { window: discoveryWindow('近3天', now) }).ok, true);
-  assert.equal(assess(candidate(), { window: discoveryWindow('今日', now) }).ok, false);
+  assert.equal(assess(candidate(), { window: discoveryWindow('今日', now) }).ok, true);
+  assert.equal(assess(candidate(), { window: discoveryWindow('昨天', now) }).ok, false);
 });
 
 function model(t, events) {

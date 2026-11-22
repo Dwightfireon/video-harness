@@ -16,6 +16,7 @@
  */
 import { attachPublishSchedule } from './publish-schedule-panel.mjs';
 import { attachPublishPromotion } from './publish-promotion-panel.mjs';
+import { filterPartitions, partitionStatusHint, partitionGuidance } from './publish-partitions.mjs';
 let schedulePanel;
 let promotionPanel;
 const $p = s => document.querySelector(s);
@@ -139,10 +140,11 @@ function paintProjects() {
 
 /* ---------- 草稿 ---------- */
 let draftCache = new Map();
-let draftRevision = 0, formRevision = 0, planRequest = 0, refsRequest = 0, planTimer;
+let draftRevision = 0, formRevision = 0, planRequest = 0, refsRequest = 0, partitionRecRequest = 0, planTimer;
 let partitionsReady = Promise.resolve();
 const formEdits = new Map();
-let formSaving = false, desiredPartition;
+const partitionRecCache = new Map();
+let formSaving = false, partitionRecBusy = false, desiredPartition;
 const editKey = id => 'vh.publish.edit.' + encodeURIComponent(draftCache.get(id)?.editorKey || id);
 function localForm(input) {
   const selected = P.catalog?.human || Number(input.humanType2) > 0 ? Number(input.humanType2) : Number(input.tid);
@@ -182,10 +184,11 @@ function paintFormStatus() {
 function applyDesiredPartition() {
   if (desiredPartition === undefined || !P.catalog) return;
   const select = $p('#pubPartition');
-  if (!desiredPartition) { select.value = ''; return; }
+  if (!desiredPartition) { select.value = ''; paintPartitionAdvice(); return; }
   const value = String(P.catalog.human ? desiredPartition.humanType2 : desiredPartition.tid);
   if (desiredPartition.partitionTaxonomy === P.catalog.taxonomy && [...select.options].some(option => option.value === value)) select.value = value;
   else { select.value = ''; $p('#pubPartitionHint').textContent = '保存的分区不在当前账号列表中，请重新选择；不会自动转换编号。'; }
+  paintPartitionAdvice();
 }
 async function saveForm() {
   if (!P.current || !P.draft || formSaving || P.busy) return;
@@ -262,6 +265,7 @@ async function loadDraft(id) {
     P.refs = null;
     paintForm();
     loadReferences(id);
+    void recommendPartition({ auto: true });
     setNotice('');
     // 选中项目后自动试运行一次：用户不必先点一下才知道缺什么。
     plan({ silent: true });
@@ -282,6 +286,7 @@ function paintForm() {
     paintCoverField();
     paintSummary(); paintReadiness();
     paintFormStatus();
+    paintPartitionRec();
     return;
   }
   if (!formEdits.has(P.current)) {
@@ -310,6 +315,7 @@ function paintForm() {
   paintCoverField();
   paintReadiness();
   paintFormStatus();
+  paintPartitionRec();
 }
 
 /* 封面：左边是缩略图 + 实际文件信息，右边一个勾选。旧版只有一个裸复选框
@@ -557,7 +563,9 @@ function paintSummary() {
       if (['video-stale', 'no-video', 'no-cover', 'cover-issue'].includes(code)) {
         hard.push(text);
         if (code === 'no-cover' || code === 'cover-issue') coverAction = text;
-      } else soft.push(text);
+      } else if (!code.startsWith('review-') && !/review|审阅|历史文案尚未关联脚本版本/.test(text)) {
+        soft.push(text);
+      }
     }
     for (const text of [...new Set(hard)]) {
       issues.insertAdjacentHTML('beforeend', `<div class="pub-block warn">⚠ ${esc(text)}</div>`);
@@ -569,8 +577,7 @@ function paintSummary() {
         esc(P.current || '') + ' 重新生成；只想先发布可以先取消勾选上传封面（投稿仍可成功）。</div>');
     }
     if (soft.length) {
-      const summary = /review|审阅/.test(soft.join('')) ? '程序未核对人工审阅与出处；发布前请自己确认画面、听感和片中数字。' : '';
-      issues.insertAdjacentHTML('beforeend', `<div class="pub-block note">ℹ ${esc(summary || soft[0])}</div>`);
+      issues.insertAdjacentHTML('beforeend', `<div class="pub-block note">ℹ ${esc(soft[0])}</div>`);
     }
   }
   if (json) json.textContent = plan?.payload ? JSON.stringify(plan.payload, null, 2) : '暂无当前表单的检查结果。';
@@ -582,14 +589,143 @@ function partitionFields(selected, catalog = {}) {
   return { partitionTaxonomy: catalog.taxonomy,
     humanType2: catalog.human ? selected : 0, tid: catalog.human ? catalog.compatTid : selected };
 }
-function paintPartitions() {
+function paintPartitionAdvice() {
+  const box = $p('#pubPartitionAdvice');
+  if (!box) return;
+  const selectedId = Number($p('#pubPartition')?.value) || 0;
+  const selected = selectedId ? P.partitions.find(item => item.id === selectedId) : null;
+  box.textContent = partitionGuidance(selected, P.catalog);
+}
+function applyPickedPartition(partitionId, { manual = false, label = '' } = {}) {
+  const select = $p('#pubPartition');
+  if (!select || !partitionId) return false;
+  const value = String(partitionId);
+  if (![...select.options].some(option => option.value === value)) {
+    const search = $p('#pubPartitionSearch');
+    if (search && search.value) { search.value = ''; paintPartitions(''); }
+  }
+  if (![...select.options].some(option => option.value === value)) return false;
+  select.value = value;
+  const entry = formEdits.get(P.current);
+  if (entry) entry.inheritPartition = false;
+  desiredPartition = localForm(readForm()).partition;
+  rememberEdit();
+  if (manual) {
+    try { localStorage.setItem('vh.publish.partition', value); } catch {}
+  }
+  const hint = $p('#pubPartitionHint');
+  const status = partitionStatusHint(P.catalog);
+  if (hint) {
+    const pickedText = label || select.selectedOptions[0]?.textContent || '';
+    hint.textContent = [status, manual ? pickedText : ('AI 推荐：' + pickedText)].filter(Boolean).join(' · ');
+  }
+  paintPartitionAdvice();
+  invalidatePlan(); paintSummary(); paintReadiness();
+  plan({ silent: true });
+  return true;
+}
+function paintPartitionRec() {
+  const btn = $p('#pubPartitionAuto'), box = $p('#pubPartitionRec');
+  if (btn) {
+    btn.disabled = P.busy || !P.current || !P.draft || partitionRecBusy;
+    btn.textContent = partitionRecBusy ? '正在推荐…' : 'AI 推荐分区';
+  }
+  if (!box) return;
+  if (!P.current || !P.draft) { box.hidden = true; box.textContent = ''; return; }
+  const cached = partitionRecCache.get(P.current);
+  if (partitionRecBusy) {
+    box.hidden = false;
+    box.className = 'pub-partition-rec';
+    box.textContent = '正在调用当前配置的模型分析视频主题并推荐分区…';
+    return;
+  }
+  if (cached?.error) {
+    box.hidden = false;
+    box.className = 'pub-partition-rec bad';
+    box.textContent = 'AI 推荐分区失败：' + cached.error;
+    return;
+  }
+  const rec = cached?.result;
+  if (!rec?.primary) { box.hidden = true; box.textContent = ''; return; }
+  box.hidden = false;
+  box.className = 'pub-partition-rec ok';
+  box.innerHTML = '';
+  const line = document.createElement('div');
+  const modelTag = rec.model ? `（${rec.model}）` : '';
+  line.textContent = `AI 推荐「${rec.primary.label}」：${rec.primary.reason}${modelTag}`;
+  box.appendChild(line);
+  if (Array.isArray(rec.alternatives) && rec.alternatives.length) {
+    const alts = document.createElement('div');
+    alts.className = 'pub-partition-rec-alts';
+    const lead = document.createElement('span');
+    lead.textContent = '备选：';
+    alts.appendChild(lead);
+    for (const alt of rec.alternatives) {
+      const pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'pub-btn';
+      pick.textContent = alt.name;
+      pick.title = alt.reason || alt.label;
+      pick.disabled = P.busy;
+      pick.onclick = () => applyPickedPartition(alt.id, { manual: true, label: alt.label });
+      alts.appendChild(pick);
+    }
+    box.appendChild(alts);
+  }
+}
+async function recommendPartition({ auto = false } = {}) {
+  if (!P.current || !P.draft || P.busy) return;
+  const id = P.current, rev = draftRevision, req = ++partitionRecRequest;
+  await partitionsReady;
+  if (id !== P.current || rev !== draftRevision || req !== partitionRecRequest) return;
+  if (!P.partitions.length) {
+    if (!auto) {
+      partitionRecCache.set(id, { ...(partitionRecCache.get(id) || {}), error: '当前没有可用分区清单，请先刷新分区' });
+      paintPartitionRec();
+    }
+    return;
+  }
+  const cached = partitionRecCache.get(id) || {};
+  const entry = formEdits.get(id);
+  const title = $p('#pubTitle').value.trim();
+  const tags = $p('#pubTags').value.trim();
+  const desc = $p('#pubDesc').value.trim();
+  if (auto) {
+    if (P.draft.publication?.state === 'submitted' || P.draft.savedForm?.partition || cached.autoTriggered || entry?.inheritPartition === false) return;
+    if (!title && !tags && !desc) return;
+    partitionRecCache.set(id, { ...cached, autoTriggered: true });
+  }
+  const beforePartition = $p('#pubPartition').value;
+  partitionRecBusy = true;
+  paintPartitionRec();
+  try {
+    const result = await call('/recommend-partition', { method: 'POST', body: { id, title, tags, desc } });
+    const nextCache = { ...(partitionRecCache.get(id) || {}), autoTriggered: true, result, error: '' };
+    partitionRecCache.set(id, nextCache);
+    if (id !== P.current || rev !== draftRevision || req !== partitionRecRequest) return;
+    const untouched = $p('#pubPartition').value === beforePartition && formEdits.get(id)?.inheritPartition !== false;
+    if (!auto || untouched) applyPickedPartition(result.primary.id, { manual: false, label: result.primary.label });
+  } catch (error) {
+    const nextCache = { ...(partitionRecCache.get(id) || {}), autoTriggered: true, error: error.message };
+    partitionRecCache.set(id, nextCache);
+  } finally {
+    if (req === partitionRecRequest) partitionRecBusy = false;
+    paintPartitionRec();
+  }
+}
+
+function paintPartitions(keyword = $p('#pubPartitionSearch')?.value || '') {
   const select = $p('#pubPartition');
   if (!select) return;
   const keep = select.value;
-  select.innerHTML = '<option value="">— 请选择分区 —</option>';
+  const query = String(keyword || '').trim();
+  const matched = filterPartitions(P.partitions, query);
+  const keptItem = keep && !matched.some(item => String(item.id) === keep) ? P.partitions.find(item => String(item.id) === keep) : null;
+  const visible = keptItem ? [keptItem, ...matched] : matched;
+  select.innerHTML = visible.length ? '<option value="">— 请选择分区 —</option>' : '<option value="">— 没有匹配的分区，请换个关键词 —</option>';
   const groups = new Map();
-  for (const item of P.partitions) {
-    const parent = item.parent || '其他';
+  for (const item of visible) {
+    const parent = item.parent || (P.catalog?.human ? '新版分区' : '其他');
     if (!groups.has(parent)) {
       const group = document.createElement('optgroup');
       group.label = parent;
@@ -602,24 +738,30 @@ function paintPartitions() {
     if (item.description) option.title = item.description;
     groups.get(parent).appendChild(option);
   }
+  const searchInput = $p('#pubPartitionSearch');
+  if (searchInput) searchInput.placeholder = P.catalog?.human ? '筛选分区，如 AI / 人工智能 / 知识 / 科技数码' : '筛选分区，如 AI / 计算机技术 / 科学科普 / 231';
   const last = String(localStorage.getItem('vh.publish.partition') || '');
   const hint = $p('#pubPartitionHint');
-  if (last && [...select.options].some(o => o.value === last)) {
+  const status = partitionStatusHint(P.catalog);
+  if (!query && last && [...select.options].some(o => o.value === last)) {
     if (keep && [...select.options].some(o => o.value === keep)) select.value = keep;
     else {
       select.value = last;
-      if (hint) hint.textContent = '沿用上次：' + (select.selectedOptions[0]?.textContent || '');
+      if (hint) hint.textContent = (status ? status + ' · ' : '') + '沿用上次：' + (select.selectedOptions[0]?.textContent || '');
     }
-  } else if (keep) select.value = keep;
-  if (hint && !hint.textContent) {
-    hint.textContent = P.catalog?.human ? '当前账号：新版分区' : '当前账号：旧版分区';
+  } else if (keep && [...select.options].some(o => o.value === keep)) select.value = keep;
+  if (hint && (!hint.textContent || query)) {
+    hint.textContent = query ? `${status ? status + ' · ' : ''}匹配 ${matched.length} / ${P.partitions.length} 个` : status;
   }
-  applyDesiredPartition();
-  const entry = formEdits.get(P.current);
-  if (entry?.inheritPartition) {
-    const partition = localForm(readForm()).partition;
-    entry.form.partition = partition; entry.baseline.partition = structuredClone(partition); persistEdit(P.current);
+  if (!query) {
+    applyDesiredPartition();
+    const entry = formEdits.get(P.current);
+    if (entry?.inheritPartition) {
+      const partition = localForm(readForm()).partition;
+      entry.form.partition = partition; entry.baseline.partition = structuredClone(partition); persistEdit(P.current);
+    }
   }
+  paintPartitionAdvice();
 }
 
 function paintSelection() { schedulePanel?.paintSelection(); }
@@ -671,8 +813,8 @@ function readForm() {
 
 /* ---------- 提交 ---------- */
 function paintBusy() {
-  for (const node of document.querySelectorAll('#pubFormCard input, #pubFormCard textarea, #pubFormCard select, #pubPlanBtn, #pubAccount, #pubReload, #pubRefsAppend')) node.disabled = P.busy;
-  paintReadiness(); paintFormStatus();
+  for (const node of document.querySelectorAll('#pubFormCard input, #pubFormCard textarea, #pubFormCard select, #pubPartitionAuto, #pubPlanBtn, #pubAccount, #pubReload, #pubRefsAppend')) node.disabled = P.busy;
+  paintReadiness(); paintFormStatus(); paintPartitionRec();
 }
 let progressToken = null;
 function beginProgress(input, progressId) {
@@ -725,7 +867,7 @@ async function submitOne() {
       return;
     }
     const where = $p('#pubPartition').selectedOptions[0]?.textContent || '未选';
-    if (!confirm(`确认投稿？\n\n作品：${input.id}\n账号：${P.overview?.account?.name || '当前账号'}\n标题：${input.title}\n分区：${where}\n标签：${input.tags}\n封面：${input.cover ? '上传当前封面' : '不上传'}\n商业声明：${promotionPanel.describe(input.promotion)}\n\n本次使用当前表单，不会自动保存资料或启用排程。提交后需去 B 站稿件管理里删改。`)) return;
+    if (!confirm(`确认投稿？\n\n作品：${input.id}\n账号：${P.overview?.account?.name || '当前账号'}\n标题：${input.title}\n分区：${where}\n标签：${input.tags}\n封面：${input.cover ? '上传当前封面' : '不上传'}\n商业声明：${promotionPanel.describe(input.promotion)}\n\n发布前请确认画面、听感与片中数字。本次使用当前表单，不会自动保存资料或启用排程；提交后需去 B 站稿件管理里删改。`)) return;
     const btn = $p('#pubSubmit');
     btn.textContent = '提交中…';
     setNotice('正在上传视频，先不要关页面…');
@@ -839,13 +981,19 @@ export async function initPublishPage() {
     $p('#pubRefsBody').classList.toggle('hidden');
   };  $p('#pubRefsAppend').onclick = () => appendReferences();
 
+  const partitionSearch = $p('#pubPartitionSearch');
+  if (partitionSearch) partitionSearch.oninput = () => paintPartitions(partitionSearch.value);
+  const partitionAuto = $p('#pubPartitionAuto');
+  if (partitionAuto) partitionAuto.onclick = () => recommendPartition({ auto: false });
   $p('#pubPartition').onchange = event => {
     const entry = formEdits.get(P.current); if (entry) entry.inheritPartition = false;
     desiredPartition = localForm(readForm()).partition;
     rememberEdit();
     try { localStorage.setItem('vh.publish.partition', event.target.value); } catch { /* Private mode must not disable form validation. */ }
     const hint = $p('#pubPartitionHint');
-    if (hint) hint.textContent = event.target.selectedOptions[0]?.textContent || '';
+    const status = partitionStatusHint(P.catalog);
+    if (hint) hint.textContent = [status, event.target.selectedOptions[0]?.textContent].filter(Boolean).join(' · ');
+    paintPartitionAdvice();
     invalidatePlan(); paintSummary(); paintReadiness();
     plan({ silent: true });
   };

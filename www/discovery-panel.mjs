@@ -47,7 +47,7 @@ export function attachDiscoveryPanel(root, {
   }
   function setBusy() {
     $('#discBtn').disabled = searching;
-    $('#discBtn').textContent = searching && !singleJob(job) && !researchJob(job) ? '正在提出问题…' : '查找选题';
+    $('#discBtn').textContent = searching && !singleJob(job) && !researchJob(job) ? (job?.mode === 'recent' ? '正在搜近期动态…' : '正在提出问题…') : '查找选题';
     for (const selector of ['#discConfigSave', '#discEnabled', '#discAutoQueue']) $(selector).disabled = pending.has('config');
     for (const selector of ['#discNotesSave', '#discNotesClear']) $(selector).disabled = pending.has('preferences');
     $('#discFeedbackClear').disabled = $('#discFeedbackConfirmYes').disabled = pending.size > 0;
@@ -160,7 +160,7 @@ export function attachDiscoveryPanel(root, {
     const evidence = (Array.isArray(research?.sources) ? research.sources : []).filter(source => safeSourceURL(source?.url));
     const mainSource = evidence.find(source => research.kind === 'news' ? source.eventDate : source.publishedAt) || evidence[0];
     const sourceDate = mainSource && (research.kind === 'news' ? mainSource.eventDate : mainSource.publishedAt);
-    record.heading.textContent = question ? item.coreQuestion || item.topic || '选题' : item.topic || item.coreQuestion || '选题';
+    record.heading.textContent = item.topic || item.coreQuestion || '选题';
     record.summary.textContent = question ? question.value || item.why || '' : research?.selectionReason || item.why || '';
     record.audience.textContent = question?.audience ? '对谁有用：' + question.audience : ''; record.audience.hidden = !question?.audience;
     const sourceMeta = mainSource ? [research.kind === 'news' ? '新闻进展' : '研究材料', new URL(mainSource.url).hostname,
@@ -172,7 +172,21 @@ export function attachDiscoveryPanel(root, {
       record.signature = signature;
       const meta = node('p', 'topic-meta', [item.query && '探索方向：' + item.query, item.at && new Date(item.at).toLocaleString('zh-CN')].filter(Boolean).join(' · '));
       const dl = node('dl');
-      for (const [label, value] of [['对象', item.subject], ['具体问题', item.coreQuestion], ['为什么问', question?.value], ['对谁有用', question?.audience], ['调查方向', question?.investigate], ['待查前提', question?.premises], ['看点', !question && research?.selectionReason ? item.why : ''], ['讲法', item.outline], ['区别', item.difference], ['角度', item.angle], ['调查发现', assessment?.finding], ['尚缺什么', assessment?.gaps], ['建议问法（尚未采用）', assessment?.suggestedQuestion]]) if (text(value)) dl.append(node('dt', '', label), node('dd', '', text(value)));
+      for (const [label, value] of [['对象', item.subject], ['具体问题', item.coreQuestion], ['为什么问', question?.value], ['对谁有用', question?.audience], ['调查方向', question?.investigate], ['待查前提', question?.premises], ['看点', !question && research?.selectionReason ? item.why : ''], ['讲法', item.outline], ['区别', item.difference], ['角度', item.angle], ['调查发现', assessment?.finding], ['尚缺什么', assessment?.gaps], ['建议问法（尚未采用）', assessment?.suggestedQuestion]]) {
+        if (!text(value)) continue;
+        dl.append(node('dt', '', label));
+        if (Array.isArray(value)) {
+          const items = value.map(text).filter(Boolean);
+          if (!items.length) continue;
+          const dd = node('dd');
+          const ul = node('ul', 'topic-dl-list');
+          for (const entryText of items) ul.append(node('li', '', entryText));
+          dd.append(ul);
+          dl.append(dd);
+        } else {
+          dl.append(node('dd', '', text(value)));
+        }
+      }
       const material = node('div', 'topic-evidence');
       if (evidence.length) {
         material.append(node('p', 'topic-meta', '程序已匹配工具返回正文中的摘录与日期，不等于独立事实核证；来源类型及支持关系仍是模型判断。'));
@@ -181,7 +195,7 @@ export function attachDiscoveryPanel(root, {
           entry.append(node('h4', '', source.title || new URL(source.url).hostname), node('p', 'topic-meta', [
             ({ primary: '一手材料', reporting: '独立报道', analysis: '分析文章' }[source.sourceType] || '来源类型未确认'),
             '发表：' + (source.publishedAt || '未确认'), source.eventDate && '事件：' + source.eventDate,
-          ].filter(Boolean).join(' · ')), node('blockquote', '', source.quote || ''), node('p', '', '支持内容：' + (source.supports || '待核对')));
+          ].filter(Boolean).join(' · ')), node('p', 'topic-evidence-supports', '要点：' + (source.supports || '待核对')), node('blockquote', '', source.quote || ''));
           if (source.publicationQuote) entry.append(node('p', 'topic-meta', '发表日期原句：' + source.publicationQuote));
           if (source.eventQuote) entry.append(node('p', 'topic-meta', '事件日期原句：' + source.eventQuote));
           material.append(entry);
@@ -268,7 +282,7 @@ export function attachDiscoveryPanel(root, {
     else if (next.historyOffset != null) view = { ...view, historyOffset: next.historyOffset };
     state = next;
     const config = next.config || {};
-    for (const [key, value] of Object.entries({ query: config.query || '', mode: config.mode === 'explore' ? 'explore' : 'focused', count: config.count || 3, notes: next.preferences?.notes || '' })) if (!dirty.has(key)) controls[key].value = value;
+    for (const [key, value] of Object.entries({ query: config.query || '', mode: ['focused', 'explore', 'recent'].includes(config.mode) ? config.mode : 'focused', count: config.count || 3, notes: next.preferences?.notes || '' })) if (!dirty.has(key)) controls[key].value = value;
     if (!pending.has('config')) { $('#discEnabled').checked = Boolean(config.enabled); $('#discAutoQueue').checked = config.autoQueue === true; }
     const topics = next.topics || [], candidates = next.candidates || topics.filter(isCandidate), suggestions = next.suggestions || topics.filter(item => item.status === 'suggestion');
     const history = next.history || topics.filter(item => !isCandidate(item) && item.status !== 'suggestion');
@@ -372,7 +386,7 @@ export function attachDiscoveryPanel(root, {
       if (!announceDone) { message('#discMsg', ''); return; }
       const count = Array.isArray(job?.results) ? job.results.length : null;
       const processed = single && count && job.results.every(item => cards.has(item.id) && cards.get(item.id).item.status !== 'suggestion');
-      let value = investigating ? '本题调查已结束，请查看卡片中的调查发现、材料与缺口；原题未改动，本次调查不会自动入队。' : job?.followupId && !single ? '旧版换角度产生的候选已保留；新的「换角度」只生成单条待确认建议。' : single ? processed ? '本次单条建议已处理；其他候选不变。' : count ? '已找到单条建议，请在原题下确认是否采用；其他候选未变。' : '这次没有合适的替代建议，原题保留。' : count == null ? '查找完成，候选与历史已更新。' : count ? `本次新增 ${count} 个问题候选，已有候选保留；可选择感兴趣的问题继续调查，尚未启动制作。` : '本次没有新增候选，已有内容保留。';
+      let value = investigating ? '本题调查已结束，请查看卡片中的调查发现、材料与缺口；原题未改动，本次调查不会自动入队。' : job?.followupId && !single ? '旧版换角度产生的候选已保留；新的「换角度」只生成单条待确认建议。' : single ? processed ? '本次单条建议已处理；其他候选不变。' : count ? '已找到单条建议，请在原题下确认是否采用；其他候选未变。' : '这次没有合适的替代建议，原题保留。' : count == null ? '查找完成，候选与历史已更新。' : count ? `本次新增 ${count} 个问题候选，已有候选保留；可选择感兴趣的问题继续调查，尚未启动制作。` : job?.skipped > 0 && !job?.materialRejected ? `本次生成了 ${job.candidates || job.skipped} 条候选，但均与已有候选或历史重复，已自动跳过；可换个更具体的方向再试。` : job?.mode === 'recent' ? `本次轻联网执行了 ${job.searchCount || 0} 次搜索，但未筛出不重复的新候选；建议换更具体的产品、公司或事件关键词再试。` : '本次没有新增候选，已有内容保留。';
       if (!investigating && !count && job?.materialRejected > 0) value += ` ${job.materialRejected} 条材料因原文、日期或讲述依据不足未推荐，不凑数。`;
       message('#discMsg', value); if (target) message(target.local, value);
     }
@@ -402,7 +416,7 @@ export function attachDiscoveryPanel(root, {
     submission = requestState;
     const token = ++jobEpoch; clearTimeout(timer); searching = true;
     announceDone = true;
-    job = investigating ? { operation: 'research', topicId: record.item.id } : record ? { followupId: record.item.id, followup } : null; setBusy();
+    job = investigating ? { operation: 'research', topicId: record.item.id } : record ? { followupId: record.item.id, followup } : { operation: 'questions', mode: controls.mode.value }; setBusy();
     const target = record?.local || $('#discMsg'); message(target, record ? '正在为这一条提交请求，其他候选不变…' : '正在提交新一批候选查找…');
     try {
       const data = await api.search(body);

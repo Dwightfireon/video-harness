@@ -147,8 +147,8 @@ details.pub-jsonbox summary:hover{color:var(--ink)}
         <option value="production-queue">当前及今后的制作队列</option>
       </select></label>
       <p id="pubScheduleScopeHint" class="pub-hint"></p>
-      <label class="pub-field"><span>自动发布分区</span><select id="pubSchedulePartition" disabled></select></label>
-      <p class="pub-hint" id="pubSchedulePartitionHint">只用于定时发布，不影响单条投稿。</p>
+      <label class="pub-field"><span>自动发布兜底分区</span><select id="pubSchedulePartition" disabled></select></label>
+      <p class="pub-hint" id="pubSchedulePartitionHint">优先用各作品已保存分区或 AI 自动推荐分区；无法识别时兜底使用此分区。</p>
       <div id="pubScheduleDaily">
         <div id="pubScheduleTimes" class="pub-time-list"></div>
         <button id="pubScheduleAdd" type="button" class="pub-btn">＋ 添加每日时点</button>
@@ -191,10 +191,16 @@ details.pub-jsonbox summary:hover{color:var(--ink)}
         <input id="pubTitle" maxlength="80">
       </label>
 
-      <label class="pub-field" id="fieldPartition">
+      <div class="pub-field" id="fieldPartition">
         <span>投稿分区 <span class="req">*</span><em id="pubPartitionHint" style="font-style:normal;margin-left:auto"></em></span>
-        <select id="pubPartition"></select>
-      </label>
+        <div class="pub-partition-tools">
+          <input id="pubPartitionSearch" class="pub-partition-search" type="search" aria-label="筛选投稿分区" placeholder="筛选分区，如 AI / 人工智能 / 科普 / 科技" autocomplete="off">
+          <button id="pubPartitionAuto" type="button" class="pub-btn">AI 推荐分区</button>
+        </div>
+        <select id="pubPartition" aria-label="投稿分区"></select>
+        <div id="pubPartitionRec" class="pub-partition-rec" hidden role="status" aria-live="polite"></div>
+        <p id="pubPartitionAdvice" class="pub-hint pub-partition-advice"></p>
+      </div>
 
       <div class="pub-field" id="fieldCover">
         <span>封面 <em id="pubCoverHint" style="font-style:normal;margin-left:auto"></em></span>

@@ -112,7 +112,7 @@ async function setup(t, options = {}) {
       const input = req.postDataJSON(); h.plans.push(input);
       const item = h.projects.find(item => item.id === input.id);
       const problems = h.realPlan ? validateInput(input, { video: item?.hasVideo ? { path: '/fake/video' } : null, cover: { ok: Boolean(item?.cover) } }) : input.problems || [];
-      return reply({ problems, ready: !problems.length, formSupported: true, promotionSupported: !h.legacyPromotion,
+      return reply({ problems, warnings: item?.warnings || [], ready: !problems.length, formSupported: true, promotionSupported: !h.legacyPromotion,
         ...(!h.legacyMarketing ? { promotionProtocolVersion: 2 } : {}) });
     }
     if (endpoint === '/preflight') { if (h.holdPreflight) await new Promise(resolve => { h.releasePreflight = resolve; }); return reply({ ok: true }); }
@@ -594,4 +594,28 @@ test('初始分区迟到：不阻塞排程/来源，校验仅使用当前项目�
   assert.equal(h.plans[0].title, '等待分区时修改的标题');
   assert.equal(h.plans[0].desc, '等待分区时补写的简介'); assert.deepEqual(h.plans[0].problems, []);
   assert.equal(h.saves.length, 0); assert.equal(h.submits, 0); assert.deepEqual(errors, []);
+});
+
+test('发布台：精简审阅灰框并在确认弹窗提醒；分区支持关键词筛选并显示说明', async t => {
+  const { h, page, errors } = await setup(t);
+  h.projects[1].warnings = [
+    { code: 'review-pending', text: '发布审阅待核或未通过。这与投稿表单能否提交是两回事。' },
+    { code: 'copy-warning', text: '历史文案尚未关联脚本版本；请人工核对后关联当前稿，不将文件存在当作最新版' },
+  ];
+  await page.locator('#pubProjects .pub-item').nth(1).click();
+  await page.waitForFunction(() => document.querySelector('#pubPartitionAdvice')?.textContent.includes('旧版分区'));
+  await page.locator('#pubPartitionSearch').fill('AI');
+  const options = await page.locator('#pubPartition option').allTextContents();
+  assert.ok(options.some(text => text.includes('计算机技术')), '搜 AI 应命中计算机技术');
+  assert.ok(!options.some(text => text.includes('科学科普')), '筛选后不应混入无关分区');
+  await page.locator('#pubPartition').selectOption('231');
+  await page.locator('#pubPartitionSearch').fill('科普');
+  assert.equal(await page.locator('#pubPartition').inputValue(), '231', '筛选关键词不应清空已选分区');
+  await page.locator('#pubPartitionSearch').fill('');
+  assert.match(await page.locator('#pubPartitionAdvice').textContent(), /AI \/ Agent|原理|开发/);
+  await page.locator('#pubPlanBtn').click(); await waitNotice(page, '尚未上传或投稿');
+  assert.equal((await page.locator('#pubIssues').textContent()).trim(), '', '纯审阅软提示不占问题区');
+  page.once('dialog', dialog => { assert.match(dialog.message(), /发布前请确认画面、听感与片中数字/); return dialog.dismiss(); });
+  await page.locator('#pubSubmit').click();
+  assert.equal(h.submits, 0); assert.deepEqual(errors, []);
 });
