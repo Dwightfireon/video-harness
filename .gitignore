@@ -48,3 +48,9 @@ dbg-tmp.mjs
 .__reddot.mjs
 dbg-tmp.mjs
 *口播稿*.md
+
+# Generated subtitles
+*.lrc
+*.srt
+*.ass
+*.vtt
