@@ -5,8 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { inspect } from 'node:util';
+import { createRequire } from 'node:module';
 import { prepareExecution, executionSnapshot, runnerConfig, runnerReady, selectRunner } from '../lib/runners/index.mjs';
-import { writeSettings, settingsPath, readKnownProviders, currentSelection, parseConfigJSON } from '../lib/provider-settings.mjs';
+import { writeSettings, settingsPath, readKnownProviders, currentSelection, parseConfigJSON,
+  readOpencodeModelDefinition, OPENCODE_GO_BASE } from '../lib/provider-settings.mjs';
 
 const secret = 'fixture-product-private-key';
 function fixture(t, runner = { name: 'opencode' }) {
@@ -281,4 +283,100 @@ process.exit(checks ? 0 : 1);
   const missing = await runnerReady(project, { env: fakeEnv, home });
   assert.equal(missing.binaryReady, true, '二进制可用不等于凭证可用');
   assert.equal(missing.configurationReady, false);
+});
+
+/* 私有 server 的模型目录是打包时的旧版，本机新抓取的目录在 opencode.db 的 kv 里。
+ * 没有桥接时 --standalone 会把新模型误判为 Model unavailable。下面用 fixture DB 验证：
+ * 原始 models.dev 定义被转译成 OpenCode V2 overlay（modelID / package / settings.baseURL /
+ * capabilities / limit）、内联定义优先、无库时使用有效 V2 兜底且不破坏其他配置。 */
+const goModel = 'hy4-flash-free';
+const goDefinition = {
+  id: goModel,
+  name: 'Hy4 flash Free',
+  tool_call: true,
+  reasoning: true,
+  limit: { context: 200000, output: 16384 },
+  modalities: { input: ['text', 'image'], output: ['text'] },
+  api: {
+    'chat-completions': {
+      base_url: OPENCODE_GO_BASE,
+      sdk: { aisdk: '@ai-sdk/openai-compatible', opencodeai: '@opencode/ai/providers/openai-compatible' },
+    },
+  },
+};
+function fixtureCatalogDB(home, t) {
+  let sqlite;
+  try { sqlite = createRequire(import.meta.url)('node:sqlite'); }
+  catch { return null; }
+  const dir = path.join(home, '.local', 'share', 'opencode');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, 'opencode.db');
+  const db = new sqlite.DatabaseSync(file);
+  t.after(() => { try { db.close(); } catch {} });
+  db.exec('create table kv (key text primary key, value text)');
+  const body = JSON.stringify({ 'opencode-go': { id: 'opencode-go', models: { [goModel]: goDefinition } } });
+  db.prepare('insert into kv (key, value) values (?, ?)').run('models-dev:v3:catalog',
+    JSON.stringify({ updatedAt: 1, digest: 'x', body }));
+  return file;
+}
+function execGo(project, env, home) {
+  return prepareExecution(project, { env, home,
+    config: { name: 'opencode', model: 'opencode-go/' + goModel }, requireCredentials: false });
+}
+
+test('本机目录里的新模型定义被转译为 V2 overlay 桥接进私有 server 虚拟配置，不改登录态与其他配置', t => {
+  const { project, home, env } = fixture(t);
+  const db = fixtureCatalogDB(home, t);
+  if (!db) return t.skip('node:sqlite 不可用');
+  assert.deepEqual(readOpencodeModelDefinition('opencode-go', goModel, home), goDefinition);
+  const execution = execGo(project, env, home);
+  const doc = JSON.parse(execution.childEnv.OPENCODE_CONFIG_CONTENT);
+  assert.equal(execution.snapshot.modelCatalogBridged, true);
+  assert.deepEqual(doc.providers['opencode-go'].models[goModel], {
+    modelID: goModel,
+    name: 'Hy4 flash Free',
+    package: '@opencode/ai/providers/openai-compatible',
+    settings: { baseURL: OPENCODE_GO_BASE },
+    capabilities: { tools: true, reasoning: true, input: ['text', 'image'], output: ['text'] },
+    limit: { context: 200000, output: 16384 },
+  });
+  assert.equal(Object.hasOwn(doc.providers['opencode-go'].models[goModel], 'api'), false);
+  assert.equal(doc.model, 'opencode-go/' + goModel);
+  // 只碰单个模型：其他 provider/权限/agent 不受影响，HOME 不被改写。
+  assert.equal(Object.hasOwn(doc, 'permissions'), false);
+  assert.equal(Object.hasOwn(doc, 'agents'), false);
+  assert.equal(execution.childEnv.HOME, home);
+});
+
+test('已有内联模型定义优先，不被本机目录覆盖', t => {
+  const { project, home, env } = fixture(t);
+  const db = fixtureCatalogDB(home, t);
+  if (!db) return t.skip('node:sqlite 不可用');
+  const inline = { id: goModel, models: { [goModel]: { modelID: goModel, name: 'inline' } } };
+  const inlineDoc = { providers: { 'opencode-go': inline } };
+  const execution = prepareExecution(project, { env: { ...env, OPENCODE_CONFIG_CONTENT: JSON.stringify(inlineDoc) },
+    home, config: { name: 'opencode', model: 'opencode-go/' + goModel }, requireCredentials: false });
+  const doc = JSON.parse(execution.childEnv.OPENCODE_CONFIG_CONTENT);
+  assert.deepEqual(doc.providers['opencode-go'].models[goModel], { modelID: goModel, name: 'inline' });
+  assert.equal(execution.snapshot.modelCatalogBridged, undefined);
+});
+
+test('无本机目录时用 opencode-go 最小 V2 兜底定义，仍保留所选模型与端点/key 配置', t => {
+  const { project, home, env } = fixture(t);
+  // 不建 DB；用产品 saved key 让 base/key 覆盖照常生成。
+  writeSettings({ keys: { 'opencode-go': 'native-bridge-key' } }, home);
+  const execution = execGo(project, env, home);
+  const doc = JSON.parse(execution.childEnv.OPENCODE_CONFIG_CONTENT);
+  assert.equal(execution.snapshot.modelCatalogBridged, true);
+  assert.deepEqual(doc.providers['opencode-go'].models[goModel], {
+    modelID: goModel,
+    name: goModel,
+    package: '@opencode/ai/providers/openai-compatible',
+    settings: { baseURL: OPENCODE_GO_BASE },
+    capabilities: { tools: true, input: ['text'], output: ['text'] },
+    limit: { context: 131072, output: 32768 },
+  });
+  assert.equal(doc.model, 'opencode-go/' + goModel);
+  assert.equal(doc.providers['opencode-go'].settings.apiKey, '{env:VH_EXECUTION_API_KEY}');
+  assert.equal(execution.childEnv.VH_EXECUTION_API_KEY, 'native-bridge-key');
 });
