@@ -275,7 +275,8 @@ main{padding:14px 28px 60px;display:grid;grid-template-columns:repeat(auto-fill,
     </div></details>
     <div id="discMsg" class="discovery-message" role="status" aria-live="polite"></div>
     <div id="discActionMsg" class="discovery-message" role="status" aria-live="polite"></div>
-    <div class="queuehead"><h2>候选</h2><span id="discTopicCount" class="format-hint"></span><button class="btn" id="discRefresh" type="button" aria-label="刷新候选与历史">刷新</button></div>
+    <div class="queuehead"><h2>候选</h2><span id="discTopicCount" class="format-hint"></span><div class="disc-head-tools"><div class="disc-density-switch" role="group" aria-label="候选卡片视图密度"><button class="btn disc-density-btn is-active" id="discDensityCompact" type="button" data-density="compact" aria-pressed="true">紧凑</button><button class="btn disc-density-btn" id="discDensityComfortable" type="button" data-density="comfortable" aria-pressed="false">舒适</button></div><button class="btn" id="discRefresh" type="button" aria-label="刷新候选与历史">刷新</button></div></div>
+    <div id="discSelectBar" class="disc-select-bar" hidden><span class="disc-select-label">快捷勾选</span><button class="btn disc-select-chip" id="discSelectAll" type="button">全选</button><button class="btn disc-select-chip" id="discSelectInvert" type="button">反选</button><button class="btn disc-select-chip" id="discSelectUnresearched" type="button">仅选尚未调查</button><button class="btn disc-select-chip" id="discSelectEnqueueable" type="button">仅选可入队</button><button class="btn disc-select-chip" id="discSelectClear" type="button" disabled>清空选择</button></div>
     <div id="discCandidates" class="discovery-list"></div>
     <p id="discEmpty" class="format-hint">正在读取候选…</p>
     <section id="discDetachedSuggestions" hidden><h3>待确认的单条建议</h3><div id="discSuggestionList" class="discovery-list"></div></section>
@@ -288,6 +289,7 @@ main{padding:14px 28px 60px;display:grid;grid-template-columns:repeat(auto-fill,
         <div class="history-pages"><button class="btn" id="discHistoryPrev" type="button" disabled>上一页</button><span id="discHistoryPageStatus" role="status"></span><button class="btn" id="discHistoryNext" type="button" disabled>下一页</button></div>
       </div>
     </section>
+    <div id="discBatchBar" class="disc-batch-bar" role="region" aria-label="候选选题批量操作" hidden><div class="disc-batch-info"><strong id="discBatchCount">已选 0 项</strong><span id="discBatchProgress" class="disc-batch-progress" role="status" aria-live="polite"></span></div><div class="disc-batch-actions"><button class="btn primary" id="discBatchResearch" type="button">批量调查</button><button class="btn" id="discBatchEnqueue" type="button">批量加入队列</button><button class="btn danger" id="discBatchRemove" type="button">批量移除</button><button class="btn danger" id="discBatchStop" type="button" hidden>停止</button><button class="btn" id="discBatchCancel" type="button">取消选择</button></div></div>
   </section>
   <section id="automationPanel" role="tabpanel" aria-labelledby="automationTab" hidden>
   <h2>自动做片与自动投稿</h2>

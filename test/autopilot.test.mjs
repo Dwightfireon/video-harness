@@ -123,3 +123,22 @@ test('全自动巡航：配置持久化保存，且默认参数符合用户约�
   assert.equal(saved.config.publishIntervalSeconds, 420);
   assert.equal(fs.existsSync(path.join(h.root, 'out', '.autopilot.json')), true);
 });
+
+test('全自动巡航：自动调查失败未入队时透出具体失败原因与建议，不笼统吞错', async t => {
+  const h = makeHarness(t, {
+    discoverAndQueue: async () => ({
+      ok: true,
+      results: [{ id: 'c1', topic: '示例问题' }],
+      added: [],
+      researchFailures: [{ topicId: 'c1', topic: '示例问题', reason: '搜索服务限流：websearch 返回 HTTP 429' }],
+      hints: ['稍等几分钟再试，搜索服务当前限流'],
+    }),
+  });
+  await h.autopilot.start();
+  await new Promise(r => setTimeout(r, 20));
+  const snap = h.autopilot.snapshot();
+  assert.equal(snap.active, false);
+  assert.equal(snap.phase, 'paused');
+  assert.match(snap.pausedReason, /HTTP 429/);
+  assert.match(snap.pausedReason, /稍等几分钟再试/);
+});

@@ -4,6 +4,7 @@ const STATUS = { candidate: '待选择', suggestion: '待确认建议', queued: 
 const FEEDBACK = { interested: '想做', seen: '已经看过', 'not-interested': '不感兴趣' };
 const RESEARCH_STATUS = { unresearched: '尚未调查', leads: '已有研究线索 · 不代表已回答', insufficient: '材料不足 · 问题已保留', reframe: '建议调整问题 · 原题未改动' };
 const HISTORY_KEYS = ['historyOffset', 'historyLimit', 'historyFilter', 'historyQuery'];
+const DENSITY_KEY = 'vh.discovery.density';
 
 export function safeSourceURL(value) {
   if (typeof value !== 'string') return null;
@@ -22,15 +23,24 @@ export function attachDiscoveryPanel(root, {
 } = {}) {
   const $ = selector => root.querySelector(selector), doc = root.ownerDocument;
   const cards = new Map(), receipts = new Map(), dirty = new Set(), pending = new Set();
+  const selected = new Set();
+  let lastSelectedId = null, batchBusy = false, batchResearch = null, lastJobViewState = 'idle';
+  const jobEndWaiters = [];
   let state = null, epoch = 0, historyEpoch = 0, jobEpoch = 0, job = null, jobBaselineKnown = false, submission = null, searching = false, polling = false, timer = null, disposed = false;
   let announceDone = false;
   let candidateOrder = [], view = { historyOffset: 0, historyLimit: 20, historyFilter: 'all', historyQuery: '' };
   const controls = { query: $('#discQuery'), mode: $('#discMode'), count: $('#discCount'), notes: $('#discNotes') };
   const node = (tag, className, content) => { const el = doc.createElement(tag); if (className) el.className = className; if (content != null) el.textContent = content; return el; };
   function button(label, handler, className = 'btn') { const el = node('button', className, label); el.type = 'button'; el.onclick = handler; return el; }
-  function message(el, value, error = false) { if (typeof el === 'string') el = $(el); el.textContent = value; el.classList.toggle('error', error); }
+  function message(el, value, error = false) { if (typeof el === 'string') el = $(el); if (!el) return; el.textContent = value; el.classList.toggle('error', error); }
   const isCandidate = item => item.status === 'candidate' && item.placement !== 'history';
   const inQueue = item => item.inQueue ?? (item.status === 'queued' && Boolean(item.queueId));
+  const isUnresearchedCandidate = item => Boolean(item && isCandidate(item) && item.question?.version === 1 && (!item.researchAssessment || item.researchAssessment.status === 'unresearched'));
+  const isEnqueueableCandidate = item => Boolean(item && isCandidate(item) && !inQueue(item) && item.status !== 'duplicate' && (item.question?.version !== 1 || item.canEnqueue === true));
+  const visibleCandidateIds = () => candidateOrder.filter(id => {
+    const record = cards.get(id);
+    return Boolean(record && isCandidate(record.item) && !record.el.classList.contains('is-history') && !record.el.classList.contains('topic-suggestion'));
+  });
   const viewMatches = next => HISTORY_KEYS.filter(key => key !== 'historyOffset').every(key => next[key] == null || next[key] === view[key]);
   const canReplace = item => isCandidate(item) && !item.queueId && !item.feedback;
   const singleJob = value => value?.followupId && !(value.count > 1) && !(value.results?.length > 1);
@@ -40,21 +50,173 @@ export function attachDiscoveryPanel(root, {
     if (identity[0] === 'questions' && !value?.followupId) identity.push(value?.query || '', value?.mode || 'focused', value?.count || null);
     return JSON.stringify(identity);
   };
+  function resolveJobWaiters() {
+    while (jobEndWaiters.length) {
+      const resolve = jobEndWaiters.shift();
+      try { resolve(); } catch {}
+    }
+  }
+  function waitForJobSettlement() {
+    if (!searching || disposed) return Promise.resolve();
+    return new Promise(resolve => { jobEndWaiters.push(resolve); });
+  }
   function reconcile(host, elements) {
     const live = new Set(elements);
     for (const el of [...host.children]) if (!live.has(el)) el.remove();
     elements.forEach((el, i) => { if (host.children[i] !== el) host.insertBefore(el, host.children[i] || null); });
   }
+
+  /* 视图密度：默认紧凑模式（3 列），可切换至舒适模式（2 列）并持久化。 */
+  let density = 'compact';
+  try {
+    if (doc.defaultView?.localStorage?.getItem(DENSITY_KEY) === 'comfortable') density = 'comfortable';
+  } catch {}
+  function applyDensity(mode) {
+    density = mode === 'comfortable' ? 'comfortable' : 'compact';
+    root.dataset.density = density;
+    const compactBtn = $('#discDensityCompact'), comfortableBtn = $('#discDensityComfortable');
+    if (compactBtn) {
+      compactBtn.classList.toggle('is-active', density === 'compact');
+      compactBtn.setAttribute('aria-pressed', String(density === 'compact'));
+    }
+    if (comfortableBtn) {
+      comfortableBtn.classList.toggle('is-active', density === 'comfortable');
+      comfortableBtn.setAttribute('aria-pressed', String(density === 'comfortable'));
+    }
+    try { doc.defaultView?.localStorage?.setItem(DENSITY_KEY, density); } catch {}
+  }
+  applyDensity(density);
+  if ($('#discDensityCompact')) $('#discDensityCompact').onclick = () => applyDensity('compact');
+  if ($('#discDensityComfortable')) $('#discDensityComfortable').onclick = () => applyDensity('comfortable');
+
+  function pruneSelection(validIds) {
+    for (const id of [...selected]) if (!validIds.has(id)) selected.delete(id);
+    if (lastSelectedId && !validIds.has(lastSelectedId)) lastSelectedId = null;
+  }
+  function canCardToggleSelect(record, target) {
+    if (!record || !isCandidate(record.item)) return false;
+    if (record.el.classList.contains('is-history') || record.el.classList.contains('topic-suggestion')) return false;
+    if (!target || typeof target.closest !== 'function') return false;
+    return !target.closest('button, a, summary, input, select, textarea, label, details, .topic-suggestions, .topic-feedback, .topic-more');
+  }
+  function toggleSelect(id, nextChecked, shiftKey = false) {
+    if (batchBusy) return;
+    const ids = visibleCandidateIds();
+    if (!ids.includes(id)) return;
+    if (shiftKey && lastSelectedId && ids.includes(lastSelectedId)) {
+      const start = ids.indexOf(lastSelectedId), end = ids.indexOf(id);
+      const [from, to] = start <= end ? [start, end] : [end, start];
+      for (let i = from; i <= to; i++) {
+        if (nextChecked) selected.add(ids[i]);
+        else selected.delete(ids[i]);
+      }
+    } else {
+      if (nextChecked) selected.add(id);
+      else selected.delete(id);
+    }
+    lastSelectedId = id;
+    paintSelection();
+  }
+  function paintSelection() {
+    const ids = visibleCandidateIds();
+    const idSet = new Set(ids);
+    pruneSelection(idSet);
+    const lockSelection = batchBusy || Boolean(batchResearch);
+    for (const [id, record] of cards.entries()) {
+      const selectable = idSet.has(id);
+      const isSelected = selectable && selected.has(id);
+      record.el.classList.toggle('is-selected', isSelected);
+      if (selectable) record.el.setAttribute('aria-selected', String(isSelected));
+      else record.el.removeAttribute('aria-selected');
+      if (record.selectBox) {
+        record.selectBox.hidden = !selectable;
+        record.selectBox.checked = isSelected;
+        record.selectBox.disabled = lockSelection || pending.has(id);
+      }
+    }
+    const selectBar = $('#discSelectBar');
+    if (selectBar) {
+      selectBar.hidden = ids.length === 0;
+      const unresearchedCount = ids.filter(id => isUnresearchedCandidate(cards.get(id)?.item)).length;
+      const enqueueableCount = ids.filter(id => isEnqueueableCandidate(cards.get(id)?.item)).length;
+      const allBtn = $('#discSelectAll'), invBtn = $('#discSelectInvert'), unrBtn = $('#discSelectUnresearched'), enqBtn = $('#discSelectEnqueueable'), clrBtn = $('#discSelectClear');
+      if (allBtn) allBtn.disabled = lockSelection || ids.length === 0;
+      if (invBtn) invBtn.disabled = lockSelection || ids.length === 0;
+      if (unrBtn) { unrBtn.disabled = lockSelection || unresearchedCount === 0; unrBtn.textContent = unresearchedCount ? `仅选尚未调查（${unresearchedCount}）` : '仅选尚未调查'; }
+      if (enqBtn) { enqBtn.disabled = lockSelection || enqueueableCount === 0; enqBtn.textContent = enqueueableCount ? `仅选可入队（${enqueueableCount}）` : '仅选可入队'; }
+      if (clrBtn) clrBtn.disabled = lockSelection || selected.size === 0;
+    }
+    const bar = $('#discBatchBar');
+    if (!bar) return;
+    const activeBatch = Boolean(batchResearch);
+    const showBar = selected.size > 0 || activeBatch;
+    bar.hidden = !showBar;
+    root.classList.toggle('has-batch-bar', showBar);
+    const countEl = $('#discBatchCount'), progressEl = $('#discBatchProgress');
+    const resBtn = $('#discBatchResearch'), enqBtn = $('#discBatchEnqueue'), remBtn = $('#discBatchRemove'), stopBtn = $('#discBatchStop'), cancelBtn = $('#discBatchCancel');
+    if (activeBatch) {
+      const currentNum = Math.min(batchResearch.index + 1, batchResearch.total);
+      if (countEl) countEl.textContent = `正在调查 ${currentNum}/${batchResearch.total}`;
+      const curTopic = batchResearch.currentId ? cards.get(batchResearch.currentId)?.item?.topic || '' : '';
+      if (progressEl) {
+        progressEl.textContent = batchResearch.stopRequested
+          ? '正在停止，当前条完成后不再继续…'
+          : curTopic ? `当前：${curTopic.slice(0, 28)}${curTopic.length > 28 ? '…' : ''}` : '按顺序逐条调查中…';
+      }
+      if (resBtn) resBtn.hidden = true;
+      if (enqBtn) enqBtn.hidden = true;
+      if (remBtn) remBtn.hidden = true;
+      if (cancelBtn) cancelBtn.hidden = true;
+      if (stopBtn) {
+        stopBtn.hidden = false;
+        stopBtn.disabled = batchResearch.stopRequested;
+        stopBtn.textContent = batchResearch.stopRequested ? '正在停止…' : '停止';
+      }
+      return;
+    }
+    const pickedIds = ids.filter(id => selected.has(id));
+    const pickedUnresearched = pickedIds.filter(id => isUnresearchedCandidate(cards.get(id)?.item)).length;
+    const pickedEnqueueable = pickedIds.filter(id => isEnqueueableCandidate(cards.get(id)?.item)).length;
+    if (countEl) countEl.textContent = `已选 ${pickedIds.length} 项`;
+    if (progressEl) {
+      const parts = [];
+      if (pickedUnresearched) parts.push(`${pickedUnresearched} 条未调查`);
+      if (pickedEnqueueable) parts.push(`${pickedEnqueueable} 条可入队`);
+      progressEl.textContent = batchBusy ? '正在执行批量操作…' : parts.join(' · ');
+    }
+    if (stopBtn) stopBtn.hidden = true;
+    if (resBtn) {
+      resBtn.hidden = false;
+      resBtn.disabled = batchBusy || searching || pickedUnresearched === 0;
+      resBtn.textContent = pickedUnresearched ? `批量调查（${pickedUnresearched}）` : '批量调查';
+    }
+    if (enqBtn) {
+      enqBtn.hidden = false;
+      enqBtn.disabled = batchBusy || pickedIds.length === 0;
+      enqBtn.textContent = pickedEnqueueable ? `批量加入队列（${pickedEnqueueable}）` : '批量加入队列';
+    }
+    if (remBtn) {
+      remBtn.hidden = false;
+      remBtn.disabled = batchBusy || pickedIds.length === 0;
+      remBtn.textContent = pickedIds.length ? `批量移除（${pickedIds.length}）` : '批量移除';
+    }
+    if (cancelBtn) {
+      cancelBtn.hidden = false;
+      cancelBtn.disabled = batchBusy;
+    }
+  }
+
   function setBusy() {
-    $('#discBtn').disabled = searching;
+    const locked = searching || Boolean(batchResearch);
+    $('#discBtn').disabled = locked || batchBusy;
     $('#discBtn').textContent = searching && !singleJob(job) && !researchJob(job) ? (job?.mode === 'recent' ? '正在搜近期动态…' : '正在提出问题…') : '查找选题';
     for (const selector of ['#discConfigSave', '#discEnabled', '#discAutoQueue']) $(selector).disabled = pending.has('config');
     for (const selector of ['#discNotesSave', '#discNotesClear']) $(selector).disabled = pending.has('preferences');
-    $('#discFeedbackClear').disabled = $('#discFeedbackConfirmYes').disabled = pending.size > 0;
+    $('#discFeedbackClear').disabled = $('#discFeedbackConfirmYes').disabled = pending.size > 0 || batchBusy;
     $('#discHistoryPrev').disabled = pending.size > 0 || !(state?.historyOffset > 0);
     $('#discHistoryNext').disabled = pending.size > 0 || state?.historyNextOffset == null;
     for (const record of cards.values()) {
-      const item = record.item, busy = pending.has(item.id) || pending.has('clear-feedback');
+      const item = record.item, busy = pending.has(item.id) || pending.has('clear-feedback') || batchBusy;
       record.el.setAttribute('aria-busy', String(busy));
       for (const el of record.actions.querySelectorAll('button')) el.disabled = busy;
       record.submit.disabled = busy;
@@ -64,14 +226,15 @@ export function attachDiscoveryPanel(root, {
       record.accept.setAttribute('aria-label', queued ? '已加入队列' : item.queueState === 'removed' ? '重新加入队列' : duplicate ? '重复候选不入队' : '想做并加入队列');
       if (item.question?.version === 1 && !queued && item.canEnqueue !== true) record.accept.disabled = true;
       const researching = searching && researchJob(job) && job.topicId === item.id;
-      record.research.disabled = searching || busy;
+      record.research.disabled = locked || busy;
       record.research.textContent = researching ? '正在调查此题…' : item.researchAssessment?.status === 'unresearched' || !item.researchAssessment ? '调查此题' : '继续调查';
-      record.deeper.disabled = record.different.disabled = searching || busy;
+      record.deeper.disabled = record.different.disabled = locked || busy;
       const local = searching && singleJob(job) && job.followupId === item.id;
       record.different.textContent = local && job.followup === 'different' ? '正在为此题换角度…' : '换角度';
       record.deeper.textContent = local && job.followup === 'deeper' ? '正在为此题找子题…' : '找一个子题';
     }
-    for (const receipt of receipts.values()) for (const el of receipt.el.querySelectorAll('button')) el.disabled = pending.has(receipt.id) || pending.has('clear-feedback');
+    for (const receipt of receipts.values()) for (const el of receipt.el.querySelectorAll('button')) el.disabled = pending.has(receipt.id) || pending.has('clear-feedback') || batchBusy;
+    paintSelection();
   }
   for (const [key, el] of Object.entries(controls)) el.oninput = () => dirty.add(key);
   function disclosure(toggle, panel, arrow) {
@@ -103,12 +266,27 @@ export function attachDiscoveryPanel(root, {
   }
   function createCard(item) {
     const el = node('article', 'discovery-topic'); el.dataset.topicId = item.id;
+    const selectBox = node('input', 'topic-select-box');
+    selectBox.type = 'checkbox';
+    selectBox.setAttribute('aria-label', '选择「' + (item.topic || item.coreQuestion || '选题') + '」');
     const heading = node('h3'), summary = node('p', 'topic-summary'), audience = node('p', 'topic-audience'), evidenceMeta = node('p', 'topic-evidence-meta'), status = node('p', 'topic-state');
     const details = node('details', 'topic-explanation'), detailLabel = node('summary', '', '查看讲法与来源'), content = node('div');
     details.append(detailLabel, content);
     const feedback = node('p', 'topic-feedback-history'), actions = node('div', 'topic-buttons'), local = node('p', 'topic-local-message'); local.setAttribute('role', 'status');
     const suggestions = node('div', 'topic-suggestions'); suggestions.hidden = true;
-    const record = { el, heading, summary, audience, evidenceMeta, status, details, detailLabel, content, feedback, actions, local, suggestions, item, signature: '' };
+    const record = { el, selectBox, heading, summary, audience, evidenceMeta, status, details, detailLabel, content, feedback, actions, local, suggestions, item, signature: '' };
+    selectBox.addEventListener('click', event => {
+      event.stopPropagation();
+      toggleSelect(record.item.id, selectBox.checked, event.shiftKey);
+    });
+    el.addEventListener('mousedown', event => {
+      if (event.shiftKey && canCardToggleSelect(record, event.target)) event.preventDefault();
+    });
+    el.addEventListener('click', event => {
+      if (!canCardToggleSelect(record, event.target)) return;
+      if (!event.shiftKey && doc.defaultView?.getSelection?.()?.toString()) return;
+      toggleSelect(record.item.id, !selected.has(record.item.id), event.shiftKey);
+    });
     const action = (body, success, opts = {}) => mutate(body, record.local, success, { record, ...opts });
     record.accept = button('想做并加入队列', () => action({ action: record.item.queueState === 'removed' ? 'requeue' : 'accept', id: item.id }, '已加入待做队列，尚未启动制作。', { queue: true, receipt: 'queued' }), 'btn primary');
     record.research = button('调查此题', () => discover(record, 'research'), 'btn primary');
@@ -144,13 +322,14 @@ export function attachDiscoveryPanel(root, {
       if (event.relatedTarget && !record.el.classList.contains('is-history') && !more.contains(event.relatedTarget)) more.open = false;
     });
     actions.append(record.research, record.accept, record.different, more);
-    el.append(heading, summary, audience, evidenceMeta, status, details, feedback, actions, editor.form, local, suggestions);
+    el.append(selectBox, heading, summary, audience, evidenceMeta, status, details, feedback, actions, editor.form, local, suggestions);
     return record;
   }
   function updateCard(record, item, history = false) {
     const wasHistory = record.el.classList.contains('is-history');
     record.item = item; record.el.classList.toggle('is-history', history);
     record.el.dataset.topicStatus = item.status;
+    record.selectBox.setAttribute('aria-label', '选择「' + (item.topic || item.coreQuestion || '选题') + '」');
     record.more.hidden = false;
     if (history) record.more.open = true;
     else if (wasHistory) record.more.open = false;
@@ -165,9 +344,21 @@ export function attachDiscoveryPanel(root, {
     record.audience.textContent = question?.audience ? '对谁有用：' + question.audience : ''; record.audience.hidden = !question?.audience;
     const sourceMeta = mainSource ? [research.kind === 'news' ? '新闻进展' : '研究材料', new URL(mainSource.url).hostname,
       sourceDate ? `${research.kind === 'news' ? '事件' : '发表'} ${sourceDate}` : '发表日期未确认'].join(' · ') : '';
-    record.evidenceMeta.textContent = question ? [RESEARCH_STATUS[assessment?.status] || RESEARCH_STATUS.unresearched, sourceMeta].filter(Boolean).join('\n') : sourceMeta || '旧推荐 · 未记录原文依据';
+    const needsEvidence = Boolean(question && !inQueue(item) && item.canEnqueue !== true);
+    if (question) {
+      const ready = item.canEnqueue === true && !inQueue(item);
+      const researchState = ready ? 'ready' : ['insufficient', 'reframe', 'leads'].includes(assessment?.status) ? assessment.status : 'unresearched';
+      record.evidenceMeta.dataset.researchState = researchState;
+      const chips = [node('span', 'topic-badge topic-badge-' + researchState, RESEARCH_STATUS[assessment?.status] || RESEARCH_STATUS.unresearched)];
+      if (ready) chips.push(node('span', 'topic-badge topic-badge-enqueueable', '可入队'));
+      if (sourceMeta) chips.push(node('span', 'topic-source-meta', sourceMeta));
+      record.evidenceMeta.replaceChildren(...chips);
+    } else {
+      record.evidenceMeta.dataset.researchState = mainSource ? 'leads' : 'legacy';
+      record.evidenceMeta.replaceChildren(node('span', 'topic-badge topic-badge-legacy', sourceMeta || '旧推荐 · 未记录原文依据'));
+    }
     record.detailLabel.textContent = history ? '查看原题说明与来源' : question ? '查看调查方向与依据' : '查看讲法与来源';
-    const signature = JSON.stringify([item.coreQuestion, item.subject, item.outline, item.difference, item.angle, item.sources, item.query, item.at, item.research, item.why, item.question, item.researchAssessment]);
+    const signature = JSON.stringify([item.coreQuestion, item.subject, item.outline, item.difference, item.angle, item.sources, item.query, item.at, item.research, item.why, item.question, item.researchAssessment, needsEvidence]);
     if (signature !== record.signature) {
       record.signature = signature;
       const meta = node('p', 'topic-meta', [item.query && '探索方向：' + item.query, item.at && new Date(item.at).toLocaleString('zh-CN')].filter(Boolean).join(' · '));
@@ -206,7 +397,9 @@ export function attachDiscoveryPanel(root, {
       const sources = node('div', 'topic-sources');
       for (const value of item.sources || []) { const url = safeSourceURL(value); if (!url) continue; const link = node('a', '', new URL(url).hostname + ' ↗'); Object.assign(link, { href: url, target: '_blank', rel: 'noopener noreferrer', title: url }); sources.append(link); }
       if (!sources.childElementCount) sources.textContent = question ? '尚未取得可匹配原文的来源；问题可以先保留，不代表前提或结论已成立。' : '旧记录没有保存来源，不补造出处';
-      record.content.replaceChildren(meta, dl, material, sources);
+      const nodes = [meta, dl, material, sources];
+      if (needsEvidence) nodes.push(node('p', 'topic-meta topic-enqueue-hint', '有符合要求的原文依据后，才能加入队列。'));
+      record.content.replaceChildren(...nodes);
     }
     record.status.textContent = item.queueState === 'removed' ? '曾加入队列 · 目前已移出' : item.queueState === 'legacy' ? '历史制作记录' : STATUS[item.status] || '待选择';
     const f = item.feedback;
@@ -216,10 +409,8 @@ export function attachDiscoveryPanel(root, {
     record.different.hidden = record.deeper.hidden = false;
     record.restore.hidden = !['archived', 'superseded'].includes(item.status) || Boolean(item.queueId);
     record.archive.hidden = !isCandidate(item);
-    const needsEvidence = Boolean(question && !inQueue(item) && item.canEnqueue !== true);
     record.accept.hidden = ['superseded', 'archived', 'suggestion'].includes(item.status);
     record.accept.title = needsEvidence ? '先调查此题；有符合要求的原文依据后才能加入队列' : '';
-    if (needsEvidence && !record.accept.hidden) record.evidenceMeta.textContent += '\n有符合要求的原文依据后，才能加入队列。';
     record.research.hidden = !question || item.status === 'suggestion' || inQueue(item) || item.status === 'duplicate';
     record.research.classList.toggle('primary', item.canEnqueue !== true);
     record.seen.hidden = f?.kind === 'seen'; record.dismiss.hidden = f?.kind === 'not-interested';
@@ -319,6 +510,7 @@ export function attachDiscoveryPanel(root, {
     $('#discEmpty').textContent = '暂无待选择候选。可以查找新候选，或从历史中放回。';
     const offset = next.historyOffset || 0, total = next.historyTotal ?? history.length;
     $('#discHistoryPageStatus').textContent = total ? `第 ${offset + 1}–${offset + history.length} 条，共 ${total} 条` : '没有符合条件的历史记录';
+    pruneSelection(ids);
     setBusy(); return true;
   }
 
@@ -370,7 +562,7 @@ export function attachDiscoveryPanel(root, {
       submission = null;
     } else if (acknowledged) submission = null;
     jobBaselineKnown = true;
-    job = data.job || null; searching = data.view?.state === 'running'; setBusy();
+    job = data.job || null; lastJobViewState = data.view?.state || 'idle'; searching = lastJobViewState === 'running'; setBusy();
     const investigating = researchJob(job), single = singleJob(job), target = investigating ? cards.get(job.topicId) : single && cards.get(job.followupId), action = investigating ? '调查问题' : job?.followup === 'deeper' ? '找子题' : '换角度';
     if (searching) {
       announceDone = true;
@@ -402,6 +594,7 @@ export function attachDiscoveryPanel(root, {
       if (!searching) {
         try { await loadTopics(); } catch (error) { message('#discActionMsg', '候选读取失败：' + error.message + '。保留上次结果，将重试读取。', true); retry = true; }
         try { await refreshQueue(); } catch (error) { message('#discActionMsg', '队列刷新失败：' + error.message, true); }
+        resolveJobWaiters();
       }
     } catch (error) { if (token === jobEpoch) { message('#discMsg', '检索状态读取失败：' + error.message + '。仅重连读取，不重新提交。', true); retry = true; } }
     finally { polling = false; if (searching || retry) schedulePoll(); }
@@ -435,6 +628,184 @@ export function attachDiscoveryPanel(root, {
       if (!disposed && token === jobEpoch && job && ((job.followupId || null) !== (body.followupId || null) || (job.followup || null) !== (body.followup || null) || (job.operation || 'questions') !== (body.operation || 'questions') || (job.topicId || null) !== (body.topicId || null))) message(target, '本次请求未确认，后台已有另一项查找；正在显示已有任务，不会重复提交。请等它结束后再试。', true);
     }
   }
+
+  /* ---------- 快捷勾选与底部批量操作 ---------- */
+  if ($('#discSelectAll')) $('#discSelectAll').onclick = () => {
+    if (batchBusy || batchResearch) return;
+    for (const id of visibleCandidateIds()) selected.add(id);
+    lastSelectedId = visibleCandidateIds().at(-1) || null;
+    paintSelection();
+  };
+  if ($('#discSelectInvert')) $('#discSelectInvert').onclick = () => {
+    if (batchBusy || batchResearch) return;
+    for (const id of visibleCandidateIds()) {
+      if (selected.has(id)) selected.delete(id);
+      else selected.add(id);
+    }
+    lastSelectedId = null;
+    paintSelection();
+  };
+  if ($('#discSelectUnresearched')) $('#discSelectUnresearched').onclick = () => {
+    if (batchBusy || batchResearch) return;
+    selected.clear();
+    for (const id of visibleCandidateIds()) if (isUnresearchedCandidate(cards.get(id)?.item)) selected.add(id);
+    lastSelectedId = null;
+    paintSelection();
+  };
+  if ($('#discSelectEnqueueable')) $('#discSelectEnqueueable').onclick = () => {
+    if (batchBusy || batchResearch) return;
+    selected.clear();
+    for (const id of visibleCandidateIds()) if (isEnqueueableCandidate(cards.get(id)?.item)) selected.add(id);
+    lastSelectedId = null;
+    paintSelection();
+  };
+  const clearSelection = () => {
+    if (batchBusy || batchResearch) return;
+    selected.clear();
+    lastSelectedId = null;
+    paintSelection();
+  };
+  if ($('#discSelectClear')) $('#discSelectClear').onclick = clearSelection;
+  if ($('#discBatchCancel')) $('#discBatchCancel').onclick = clearSelection;
+
+  async function batchRemove() {
+    if (batchBusy || batchResearch) return;
+    const ids = visibleCandidateIds().filter(id => selected.has(id));
+    if (!ids.length) return;
+    batchBusy = true; ++epoch; setBusy();
+    let removed = 0, failed = 0, lastNext = null;
+    try {
+      for (const id of ids) {
+        if (disposed) return;
+        try {
+          lastNext = await api.update({ action: 'archive', id }, view);
+          selected.delete(id);
+          removed++;
+        } catch { failed++; }
+      }
+      if (disposed) return;
+      if (lastNext) paint(lastNext);
+      else await loadTopics();
+      const summaryText = failed
+        ? `已移除 ${removed} 条候选至历史（保留推荐记录，不记作不感兴趣），另有 ${failed} 条移除失败。`
+        : `已移除 ${removed} 条候选至历史（保留推荐记录，不记作不感兴趣）。`;
+      message('#discMsg', summaryText, failed > 0 && removed === 0);
+      message('#discActionMsg', summaryText, failed > 0 && removed === 0);
+    } finally {
+      batchBusy = false; setBusy();
+    }
+  }
+
+  async function batchEnqueue() {
+    if (batchBusy || batchResearch) return;
+    const ids = visibleCandidateIds().filter(id => selected.has(id));
+    if (!ids.length) return;
+    const eligible = [], skipped = [];
+    for (const id of ids) {
+      const item = cards.get(id)?.item;
+      if (isEnqueueableCandidate(item)) eligible.push(item);
+      else skipped.push(id);
+    }
+    if (!eligible.length) {
+      const msg = `选中的 ${ids.length} 条均未满足入队条件（请先调查并取得有效原文依据）。`;
+      message('#discMsg', msg, true);
+      message('#discActionMsg', msg, true);
+      return;
+    }
+    batchBusy = true; ++epoch; setBusy();
+    let enqueued = 0, failed = 0, lastNext = null;
+    try {
+      for (const item of eligible) {
+        if (disposed) return;
+        try {
+          lastNext = await api.update({ action: item.queueState === 'removed' ? 'requeue' : 'accept', id: item.id }, view);
+          selected.delete(item.id);
+          enqueued++;
+        } catch { failed++; }
+      }
+      if (disposed) return;
+      if (lastNext) paint(lastNext);
+      else await loadTopics();
+      let queueErr = '';
+      if (enqueued > 0) {
+        try { await refreshQueue(); } catch (error) { queueErr = '；队列显示刷新失败：' + error.message; }
+      }
+      const skipCount = skipped.length + failed;
+      const summaryText = skipCount > 0
+        ? `已入队 ${enqueued} 条，跳过 ${skipCount} 条未满足条件${queueErr}`
+        : `已入队 ${enqueued} 条，尚未启动制作${queueErr}`;
+      message('#discMsg', summaryText, Boolean(queueErr) || enqueued === 0);
+      message('#discActionMsg', summaryText, Boolean(queueErr) || enqueued === 0);
+    } finally {
+      batchBusy = false; setBusy();
+    }
+  }
+
+  async function batchResearchRun() {
+    if (batchBusy || batchResearch || searching) return;
+    const ids = visibleCandidateIds().filter(id => selected.has(id));
+    if (!ids.length) return;
+    const targets = ids.filter(id => isUnresearchedCandidate(cards.get(id)?.item));
+    const skipped = ids.length - targets.length;
+    if (!targets.length) {
+      const msg = `选中的 ${ids.length} 条均已调查或无需调查。`;
+      message('#discMsg', msg);
+      message('#discActionMsg', msg);
+      return;
+    }
+    batchResearch = { queue: targets, index: 0, total: targets.length, done: 0, failed: 0, skipped, stopRequested: false, currentId: null };
+    setBusy();
+    let completedSteps = 0;
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        if (disposed || batchResearch.stopRequested) break;
+        const id = targets[i];
+        const record = cards.get(id);
+        if (!record || !isCandidate(record.item)) {
+          batchResearch.skipped++;
+          selected.delete(id);
+          continue;
+        }
+        batchResearch.index = i;
+        batchResearch.currentId = id;
+        paintSelection();
+        await discover(record, 'research');
+        if (disposed) break;
+        if (searching) await waitForJobSettlement();
+        if (disposed) break;
+        completedSteps++;
+        if (lastJobViewState === 'done') batchResearch.done++;
+        else batchResearch.failed++;
+        selected.delete(id);
+        if (batchResearch.stopRequested) break;
+      }
+    } finally {
+      const info = batchResearch;
+      batchResearch = null;
+      setBusy();
+      if (!disposed && info) {
+        const remaining = Math.max(0, info.total - completedSteps);
+        const parts = [];
+        if (info.stopRequested && remaining > 0) parts.push(`已停止批量调查：已完成 ${completedSteps}/${info.total}，剩余 ${remaining} 条未发起`);
+        else parts.push(`批量调查结束：完成 ${info.done} 条`);
+        if (info.failed) parts.push(`失败 ${info.failed} 条`);
+        if (info.skipped) parts.push(`跳过 ${info.skipped} 条已调查或不可调查`);
+        const summaryText = parts.join('，') + '。';
+        message('#discMsg', summaryText, info.failed > 0 && info.done === 0);
+        message('#discActionMsg', summaryText, info.failed > 0 && info.done === 0);
+      }
+    }
+  }
+
+  if ($('#discBatchRemove')) $('#discBatchRemove').onclick = () => void batchRemove();
+  if ($('#discBatchEnqueue')) $('#discBatchEnqueue').onclick = () => void batchEnqueue();
+  if ($('#discBatchResearch')) $('#discBatchResearch').onclick = () => void batchResearchRun();
+  if ($('#discBatchStop')) $('#discBatchStop').onclick = () => {
+    if (!batchResearch) return;
+    batchResearch.stopRequested = true;
+    paintSelection();
+  };
+
   $('#discBtn').onclick = () => discover();
   $('#discRefresh').onclick = async () => { try { await loadTopics(); await poll(); } catch (error) { message('#discActionMsg', '读取候选失败：' + error.message, true); } };
   $('#discConfigSave').onclick = () => {
@@ -464,5 +835,13 @@ export function attachDiscoveryPanel(root, {
   const unsubscribe = subscribeQueueChanges(() => {
     loadTopics().catch(error => message('#discActionMsg', '队列已更新，但历史读取失败：' + error.message + '。请刷新候选与历史。', true));
   });
-  return { ready, refresh: loadTopics, poll, dispose() { disposed = true; submission = null; ++epoch; ++jobEpoch; clearTimeout(timer); unsubscribe(); } };
+  return {
+    ready, refresh: loadTopics, poll,
+    dispose() {
+      disposed = true; submission = null;
+      if (batchResearch) batchResearch.stopRequested = true;
+      resolveJobWaiters();
+      ++epoch; ++jobEpoch; clearTimeout(timer); unsubscribe();
+    },
+  };
 }

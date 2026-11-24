@@ -389,7 +389,7 @@ body.workspace-page > .vh-pane-stage {
 }
 .newbox.composer > *,
 #list .card > *,
-.discovery-topic > *,
+.discovery-topic > :not(.topic-select-box),
 .settings-page .card > *,
 .queue-body .timing-card > * {
   position: relative;
@@ -402,6 +402,60 @@ body.workspace-page > .vh-pane-stage {
   transform: translateY(-3px);
   border-color: var(--lg-border-hover);
   box-shadow: var(--lg-rim), var(--lg-shadow-hover);
+}
+.discovery-topic.is-selected,
+.discovery-topic.is-selected:hover {
+  border-color: var(--lg-border-hover);
+  background:
+    linear-gradient(148deg, color-mix(in srgb, var(--ok) 11%, transparent) 0%, color-mix(in srgb, var(--ok) 3%, transparent) 100%),
+    var(--lg-surface-strong);
+  box-shadow: var(--lg-rim), 0 0 0 1px color-mix(in srgb, var(--ok) 45%, transparent), var(--lg-shadow-hover);
+}
+.disc-density-switch {
+  background: var(--lg-surface-subtle);
+  border-color: var(--lg-border);
+  box-shadow: var(--lg-rim);
+}
+.disc-density-btn {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.disc-density-btn.is-active {
+  background: var(--lg-surface-strong);
+  border-color: var(--lg-border-hover);
+  box-shadow: var(--lg-rim);
+}
+.disc-select-chip {
+  background: var(--lg-surface-subtle);
+  border-color: var(--lg-border);
+  box-shadow: var(--lg-rim);
+}
+.disc-batch-bar {
+  background: rgba(18, 20, 26, 0.88);
+  backdrop-filter: blur(22px) saturate(145%);
+  -webkit-backdrop-filter: blur(22px) saturate(145%);
+  border: 1px solid var(--lg-border-hover);
+  box-shadow: var(--lg-rim), var(--lg-shadow-hover);
+}
+:root[data-theme="light"] .disc-batch-bar {
+  background: rgba(255, 255, 255, 0.88);
+}
+html.vh-pane-mode .disc-batch-bar {
+  left: 50%;
+  width: min(780px, calc(100vw - 32px));
+}
+/* 展开「更多」下拉菜单时提升整张卡片层级并锁定位置，防止被下方卡片覆盖或触发 hover 抖动循环 */
+.discovery-topic:not(.is-history):has(.topic-more[open]),
+.discovery-topic:not(.is-history):has(.topic-more[open]):hover {
+  z-index: 30;
+  transform: none;
+}
+.discovery-topic:not(.is-history):has(.topic-more[open]):is(:hover, :focus-within) {
+  z-index: 40;
+}
+.discovery-topic:not(.is-history) > .topic-buttons:has(.topic-more[open]) {
+  z-index: 20;
 }
 #list .thumb {
   background: var(--lg-thumb-bg);
@@ -633,12 +687,28 @@ body.workspace-page > .vh-pane-stage {
   box-shadow: var(--lg-rim);
   border-radius: 14px;
 }
-.topic-more-body {
-  background: var(--lg-surface-strong);
-  backdrop-filter: blur(30px) saturate(150%);
-  -webkit-backdrop-filter: blur(30px) saturate(150%);
-  border: 1px solid var(--lg-border);
-  box-shadow: var(--lg-rim), var(--lg-shadow);
+.discovery-topic:not(.is-history) .topic-more-body {
+  background: rgba(20, 22, 28, 0.94);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid var(--lg-border-hover);
+  box-shadow: var(--lg-rim), var(--lg-shadow-hover);
+}
+:root[data-theme="light"] .discovery-topic:not(.is-history) .topic-more-body {
+  background: rgba(255, 255, 255, 0.94);
+}
+.discovery-topic:not(.is-history) .topic-more-body .btn {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  border-radius: 8px;
+}
+.discovery-topic:not(.is-history) .topic-more-body .btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--line);
+  transform: none;
 }
 .queue-body .queue-item,
 #queuePanel .queue-item {

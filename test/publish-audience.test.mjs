@@ -78,4 +78,31 @@ test('投稿表单的标题与简介同样挡住内部记录', async () => {
   const blocked = validateForm({ ...base, desc: leak });
   assert.ok(blocked.some(text => /会原样公开/.test(text)), blocked.join(' / '));
   assert.deepEqual(validateForm({ ...base, desc: '这一期讲 800 VDC 对服务器电源的影响。' }), []);
+  assert.ok(validateForm({ ...base, desc: '本视频由口播稿转成，带你看懂测试结论。' }).length > 0);
+});
+
+test('本机路径、隐私信息与制作幕后（「口播稿转成的视频」等）被严格拦截', () => {
+  const localPath = ['', 'Users', 'demo', 'project', 'a.md'].join('/');
+  const fileUrl = 'file://' + localPath;
+  for (const raw of [
+    '素材在 ' + localPath,
+    '打开 ' + fileUrl + ' 查看',
+    '预览地址 http://localhost:8144/',
+    '使用 zh-CN-XiaoxiaoNeural 与 edge-tts 配音',
+  ]) {
+    const issues = audienceIssues({ desc: raw });
+    assert.equal(issues.errors.length, 1, raw);
+    assert.equal(issues.errors[0].code, 'internal-artifact', raw);
+  }
+  for (const raw of [
+    '本期是由口播稿转成的视频，带你了解机器人仿真。',
+    '本视频由工作台自动巡航流水线配音合成制作。',
+    '脚本已在本机环境中完成增量渲染与字幕混流。',
+  ]) {
+    const issues = audienceIssues({ desc: raw });
+    assert.equal(issues.errors.length, 1, raw);
+    assert.equal(issues.errors[0].code, 'internal-process', raw);
+    const checked = checkPublish(COPY(raw));
+    assert.equal(checked.ok, false, raw);
+  }
 });

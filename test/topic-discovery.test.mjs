@@ -127,7 +127,7 @@ test('提示词包含日期、两种模式、多种切口、允许少给、历�
   assert.match(focused, /模式：贴近当前方向/);
   assert.match(explore, /模式：探索新方向/);
   assert.match(focused, /不调用 websearch\/webfetch/);
-  assert.match(focused, /变化.*机制解释.*具体案例.*实际选择/);
+  assert.match(focused, /变化.*具体案例.*机制解释/);
   assert.match(focused, /最多 4 个候选.*少给.*\[\]/);
   assert.match(focused, /history-one/);
   assert.match(focused, /旧标题/);

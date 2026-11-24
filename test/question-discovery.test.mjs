@@ -440,10 +440,27 @@ test('shared pure topic contract/re-export roundtrip and legacy admission remain
   const prompt = discoveryPrompt({ query: '普通用户的任务' });
   assert.match(prompt, /不依赖来源/); assert.match(prompt, /premises/); assert.doesNotMatch(prompt, /至少完成两个不同查询/);
   assert.match(prompt, /文案去模板化/);
+  assert.doesNotMatch(prompt, /多领域并列规则/);
+  const multiPrompt = discoveryPrompt({ query: '自然科学、人工智能', count: 3, mode: 'explore' });
+  assert.match(multiPrompt, /多领域并列规则/);
+  assert.match(multiPrompt, /「自然科学」、「人工智能」/);
+  assert.match(multiPrompt, /并列「或」关系/);
+  assert.match(multiPrompt, /严禁把所有候选都硬凑成多个领域的交叉结合题/);
+  const recentMultiPrompt = discoveryPrompt({ query: '自然科学、人工智能', count: 3, mode: 'recent' });
+  assert.match(recentMultiPrompt, /分别按不同领域发起独立查询/);
+  const slashNotSplit = discoveryPrompt({ query: '为什么A/B测试容易误导', count: 3 });
+  assert.doesNotMatch(slashNotSplit, /多领域并列规则/);
   const recentPrompt = discoveryPrompt({ query: 'ChatGPT', mode: 'recent' });
   assert.match(recentPrompt, /锚定本次搜到的具体近期变化或事件/);
   const rPrompt = researchPrompt({ target: question(undefined, { id: 'q' }), date: '2026-11-22' });
   assert.match(rPrompt, /核心结论/); assert.match(rPrompt, /大白话中文提炼/);
+  assert.match(rPrompt, /学科来源策略：LLM\/AI\/技术/);
+  const natRPrompt = researchPrompt({ target: question('CRISPR 基因编辑如何精准切割 DNA', { subject: 'CRISPR 基因编辑' }) });
+  assert.match(natRPrompt, /学科来源策略：自然科学/); assert.match(natRPrompt, /Quanta Magazine/);
+  const socRPrompt = researchPrompt({ target: question('OECD 成员国收入不平等变化', { subject: '收入不平等' }) });
+  assert.match(socRPrompt, /学科来源策略：社会科学/); assert.match(socRPrompt, /OECD/);
+  const philRPrompt = researchPrompt({ target: question('自由意志与物理决定论能否调和', { subject: '自由意志哲学' }) });
+  assert.match(philRPrompt, /学科来源策略：哲学/); assert.match(philRPrompt, /SEP/);
 });
 
 test('discovery and investigation follow provider-settings model unless explicitly overridden', async t => {

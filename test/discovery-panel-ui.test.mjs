@@ -575,3 +575,94 @@ test('新材料简洁显示类型/来源/日期，详细原文按需展开；旧
   }
   assert.deepEqual(h.errors, []); assert.deepEqual(posts(h), []);
 });
+
+test('紧凑模式默认启用三列网格并支持切换舒适模式，无横向溢出', async t => {
+  const h = await setup(t, { width: 1440, extra: [questionTopic('q1'), questionTopic('q2')] }), { page } = h;
+  assert.equal(await page.getAttribute('#discoveryPanel', 'data-density'), 'compact');
+  assert.equal(await page.getAttribute('#discDensityCompact', 'aria-pressed'), 'true');
+  assert.equal(await page.locator('[data-topic-id="q1"] .topic-audience').isVisible(), false, '紧凑模式收纳受众长文案');
+  const compactCols = await page.locator('#discCandidates').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+  assert.equal(compactCols, 3, '桌面端紧凑模式为 3 列网格');
+  await page.click('#discDensityComfortable');
+  assert.equal(await page.getAttribute('#discoveryPanel', 'data-density'), 'comfortable');
+  assert.equal(await page.locator('[data-topic-id="q1"] .topic-audience').isVisible(), true, '舒适模式恢复展示受众文案');
+  const comfortableCols = await page.locator('#discCandidates').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+  assert.equal(comfortableCols, 2, '桌面端舒适模式为 2 列网格');
+  await page.click('#discDensityCompact');
+  for (const width of [320, 375, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'no overflow at ' + width);
+  }
+  assert.deepEqual(h.errors, []);
+});
+
+test('多选交互：勾选框、空白区点击、Shift区间多选与快捷筛选勾选，不误触发按钮', async t => {
+  const readyQ = questionTopic('q-ready', { sources: ['https://example.com/work'], research: researchFixture(), canEnqueue: true,
+    researchAssessment: { version: 1, status: 'leads', finding: '已有材料线索', gaps: [], suggestedQuestion: '' } });
+  const unres1 = questionTopic('q-u1');
+  const unres2 = questionTopic('q-u2');
+  const h = await setup(t, { extra: [readyQ, unres1, unres2] }), { page } = h;
+  assert.equal(await page.isVisible('#discBatchBar'), false);
+  await card(page, 'a').locator('.topic-summary').click();
+  assert.equal(await page.isVisible('#discBatchBar'), true);
+  assert.equal(await page.textContent('#discBatchCount'), '已选 1 项');
+  await card(page, 'a').locator(':scope > details > summary').click();
+  assert.equal(await page.textContent('#discBatchCount'), '已选 1 项');
+  const ids = await page.locator('#discCandidates > article').evaluateAll(els => els.map(el => el.dataset.topicId));
+  await card(page, ids[0]).locator('.topic-select-box').check();
+  await card(page, ids[2]).locator('.topic-select-box').click({ modifiers: ['Shift'] });
+  assert.equal(await page.textContent('#discBatchCount'), '已选 3 项');
+  await page.click('#discSelectUnresearched');
+  assert.equal(await page.textContent('#discBatchCount'), '已选 2 项');
+  await page.click('#discSelectEnqueueable');
+  assert.equal(await page.textContent('#discBatchCount'), '已选 3 项');
+  await page.click('#discSelectInvert');
+  assert.equal(await page.textContent('#discBatchCount'), '已选 2 项');
+  await page.click('#discSelectAll');
+  assert.equal(await page.textContent('#discBatchCount'), '已选 5 项');
+  await page.click('#discBatchCancel');
+  assert.equal(await page.isVisible('#discBatchBar'), false);
+  assert.deepEqual(h.errors, []);
+});
+
+test('批量移除保留推荐历史且不记负反馈；批量入队自动跳过未满足条件项并清理过期选中ID', async t => {
+  const readyQ = questionTopic('q-ready', { sources: ['https://example.com/work'], research: researchFixture(), canEnqueue: true,
+    researchAssessment: { version: 1, status: 'leads', finding: '已有线索', gaps: [], suggestedQuestion: '' } });
+  const unresQ = questionTopic('q-unres');
+  const h = await setup(t, { extra: [readyQ, unresQ] }), { page } = h;
+  await card(page, 'q-ready').locator('.topic-select-box').check();
+  await card(page, 'q-unres').locator('.topic-select-box').check();
+  await page.click('#discBatchEnqueue');
+  await page.waitForFunction(() => document.querySelector('#discMsg').textContent.includes('已入队 1 条，跳过 1 条未满足条件'));
+  assert.equal(h.queue.length, 1);
+  assert.equal(h.queue[0].id, 'q-q-ready');
+  assert.equal(await page.textContent('#discBatchCount'), '已选 1 项');
+  await card(page, 'a').locator('.topic-select-box').check();
+  assert.equal(await page.textContent('#discBatchCount'), '已选 2 项');
+  await page.click('#discBatchRemove');
+  await page.waitForFunction(() => document.querySelector('#discMsg').textContent.includes('已移除 2 条候选'));
+  assert.equal(await page.isVisible('#discBatchBar'), false, '移除后自动清理选中并收起底部栏');
+  assert.equal(h.topics.find(item => item.id === 'a').status, 'archived');
+  assert.equal(h.topics.find(item => item.id === 'a').feedback, undefined, '批量移除不合成负反馈');
+  assert.equal(h.topics.find(item => item.id === 'q-unres').status, 'archived');
+  assert.equal(h.topics.find(item => item.id === 'q-unres').feedback, undefined);
+  assert.deepEqual(h.errors, []);
+});
+
+test('批量调查严格串行执行并实时显示进度，点击停止后不再发起剩余任务', async t => {
+  const q1 = questionTopic('q1'), q2 = questionTopic('q2'), q3 = questionTopic('q3');
+  const h = await setup(t, { extra: [q1, q2, q3] }), { page } = h;
+  await page.click('#discSelectUnresearched');
+  assert.equal(await page.textContent('#discBatchCount'), '已选 3 项');
+  await page.click('#discBatchResearch');
+  await page.waitForFunction(() => document.querySelector('#discBatchCount').textContent.includes('正在调查 1/3'));
+  assert.equal(posts(h, '/_api/schedule/discover').length, 1, '严禁并发：仅发起第 1 条');
+  assert.equal(await page.isVisible('#discBatchStop'), true);
+  await page.click('#discBatchStop');
+  assert.equal(await page.isDisabled('#discBatchStop'), true);
+  h.job = { view: { state: 'done' }, job: { ...h.job.job, results: [] } };
+  await page.click('#discRefresh');
+  await page.waitForFunction(() => document.querySelector('#discMsg').textContent.includes('已停止批量调查'));
+  assert.equal(posts(h, '/_api/schedule/discover').length, 1, '停止后不再发起剩余 2 条');
+  assert.deepEqual(h.errors, []);
+});

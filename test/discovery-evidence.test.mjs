@@ -172,3 +172,112 @@ test('规范化剥除越界来源、假核证字段和不安全记录路径，�
   assert.equal(result.verified, undefined); assert.equal(result.arbitrary, undefined);
   assert.equal(normalizeTopicResearch(null, [url]), null);
 });
+
+test('按学科分层的权威依据标准校验：自然科学付费墙组合、社科权威报告、哲学学术百科合法通过，营销号与死链被拒', () => {
+  // 1. 自然科学类（非一手，来自 Nature 摘要 + Quanta Magazine 权威解读）
+  const natUrl = 'https://www.quantamagazine.org/crispr-mechanism-2026';
+  const natQuote = 'The researchers used cryo-EM to observe the conformational changes during DNA cleavage at high resolution.';
+  const natBody = `# CRISPR Mechanism\nPublished: November 9, 2026\n${natQuote}`;
+  const natResearch = collectDiscoveryResearch([...searches(), tool('webfetch', { url: natUrl }, natBody)]);
+  const natItem = candidate({
+    kind: 'evergreen',
+    topic: 'CRISPR 基因编辑如何精准识别目标 DNA',
+    subject: 'CRISPR 基因编辑',
+    coreQuestion: 'CRISPR 酶在切割 DNA 时发生怎样的构象变化',
+    sources: [natUrl],
+    evidence: [evidence({
+      url: natUrl,
+      sourceType: 'analysis',
+      quote: natQuote,
+      publicationQuote: 'Published: November 9, 2026',
+      eventDate: null,
+      eventQuote: '',
+    })],
+  });
+  const natResult = assessDiscoveryCandidate(natItem, { sources: natItem.sources, research: natResearch, now });
+  assert.equal(natResult.ok, true);
+  assert.ok(natResult.research.caveats.some(c => /权威机构解读/.test(c)));
+
+  // 2. 社会科学类（来自 OECD 报告）
+  const socUrl = 'https://www.oecd.org/reports/income-inequality-2026';
+  const socQuote = 'Across OECD countries, the Gini coefficient increased slightly from 0.31 to 0.33 following labor market shifts.';
+  const socBody = `# Income Inequality Report\nPublished: November 9, 2026\n${socQuote}`;
+  const socResearch = collectDiscoveryResearch([...searches(), tool('webfetch', { url: socUrl }, socBody)]);
+  const socItem = candidate({
+    kind: 'evergreen',
+    topic: 'OECD 成员国收入不平等现象为何持续拉大',
+    subject: '收入不平等',
+    coreQuestion: '劳动力市场结构变化如何影响不同收入阶层的分配差距',
+    sources: [socUrl],
+    evidence: [evidence({
+      url: socUrl,
+      sourceType: 'reporting',
+      quote: socQuote,
+      publicationQuote: 'Published: November 9, 2026',
+      eventDate: null,
+      eventQuote: '',
+    })],
+  });
+  const socResult = assessDiscoveryCandidate(socItem, { sources: socItem.sources, research: socResearch, now });
+  assert.equal(socResult.ok, true);
+  assert.ok(socResult.research.caveats.some(c => /权威机构报告/.test(c)));
+
+  // 3. 哲学/思辨类（来自 SEP 斯坦福哲学百科）
+  const philUrl = 'https://plato.stanford.edu/entries/free-will/';
+  const philQuote = 'Compatibilism is the thesis that free will is compatible with determinism even under physical constraints.';
+  const philBody = `# Free Will\nPublished: November 9, 2026\n${philQuote}`;
+  const philResearch = collectDiscoveryResearch([...searches(), tool('webfetch', { url: philUrl }, philBody)]);
+  const philItem = candidate({
+    kind: 'evergreen',
+    topic: '决定论与自由意志能否在相容论下达成调和',
+    subject: '自由意志哲学',
+    coreQuestion: '相容论如何重新定义自由意志以避开物理决定论的排斥',
+    sources: [philUrl],
+    evidence: [evidence({
+      url: philUrl,
+      sourceType: 'analysis',
+      quote: philQuote,
+      publicationQuote: 'Published: November 9, 2026',
+      eventDate: null,
+      eventQuote: '',
+    })],
+  });
+  const philResult = assessDiscoveryCandidate(philItem, { sources: philItem.sources, research: philResearch, now });
+  assert.equal(philResult.ok, true);
+  assert.ok(philResult.research.caveats.some(c => /权威学术百科/.test(c)));
+
+  // 4. 营销号/垃圾域名依然被拒（即使文本完全匹配且字数足够）
+  const junkUrl = 'https://zhuanlan.zhihu.com/p/123456';
+  const junkQuote = '这是一份营销号水文，详细介绍了各种未核实的技术与所谓内幕爆料，不提供原始出处与数据支撑。';
+  const junkBody = `# 知乎专栏文章\nPublished: November 9, 2026\n${junkQuote}`;
+  const junkResearch = collectDiscoveryResearch([...searches(), tool('webfetch', { url: junkUrl }, junkBody)]);
+  const junkItem = candidate({
+    topic: '知乎热帖讨论的某种技术现象',
+    sources: [junkUrl],
+    evidence: [evidence({
+      url: junkUrl,
+      sourceType: 'primary',
+      quote: junkQuote,
+      publicationQuote: 'Published: November 9, 2026',
+    })],
+  });
+  const junkResult = assessDiscoveryCandidate(junkItem, { sources: junkItem.sources, research: junkResearch, now });
+  assert.equal(junkResult.ok, false);
+  assert.match(junkResult.reason, /有效片段/);
+
+  // 5. 死链/未读取的 URL 依然被拒
+  const deadUrl = 'https://iep.utm.edu/epistemo-broken';
+  const deadResearch = collectDiscoveryResearch([...searches()]); // webfetch 未完成或失败
+  const deadItem = candidate({
+    topic: '认识论中的怀疑论挑战如何回应',
+    sources: [deadUrl],
+    evidence: [evidence({
+      url: deadUrl,
+      sourceType: 'analysis',
+      quote: 'Epistemological skepticism questions the possibility of knowledge and justification under standard criteria.',
+    })],
+  });
+  const deadResult = assessDiscoveryCandidate(deadItem, { sources: deadItem.sources, research: deadResearch, now });
+  assert.equal(deadResult.ok, false);
+  assert.match(deadResult.reason, /有效片段/);
+});
