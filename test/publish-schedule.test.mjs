@@ -278,15 +278,49 @@ test('明确确认与乐观版本保护；暂停保留队列和时点；不改�
   assert.equal(fs.readFileSync(path.join(f.root, 'schedule.json'), 'utf8'), '{"publish":{"enabled":true}}');
 });
 
-test('损坏状态不当成空配置，不继续投稿；遗留 running 不自动恢复', async t => {
+test('损坏状态不当成空配置，不继续投稿；遗留 running 不自动恢复，核对后可显式解除', async t => {
   const f = fixture(t); f.enable();
   const file = path.join(f.root, 'out/.publish-schedule/state.json');
   const state = JSON.parse(fs.readFileSync(file, 'utf8'));
-  state.lastAttempt = { state: 'running', id: 'a' }; fs.writeFileSync(file, JSON.stringify(state));
+  state.lastAttempt = { attemptId: 'orphan-1', state: 'running', id: 'a', at: date(10, 20) };
+  fs.writeFileSync(file, JSON.stringify(state));
+  assert.equal(f.scheduler.view().attemptActive, false);
   f.time(date(11, 20)); assert.equal((await f.scheduler.tick()).reason, 'not-due');
   assert.throws(() => f.enable(), /人工核对/);
+  assert.throws(() => f.scheduler.save({ action: 'reconcile', revision: f.scheduler.view().revision, confirmed: false }), /确认/);
+  const reconciled = f.scheduler.save({ action: 'reconcile', revision: f.scheduler.view().revision, resolution: 'not-submitted', confirmed: true });
+  assert.equal(reconciled.enabled, false);
+  assert.equal(reconciled.lastAttempt.state, 'failed');
+  assert.equal(reconciled.lastAttempt.outcome, 'interrupted');
+  f.enable();
+  assert.equal(f.scheduler.view().enabled, true);
   fs.writeFileSync(file, '{bad'); assert.equal((await f.scheduler.tick()).reason, 'error');
   assert.deepEqual(f.calls, []);
+});
+
+test('reconcileSubmitted：仅在非运行中同步已完成的手工投稿，正在执行的投稿不可提前解除', async t => {
+  let resolveSubmit;
+  const f = fixture(t, { submitOne: () => new Promise(resolve => { resolveSubmit = resolve; }) });
+  f.enable(); f.time(date(10, 20));
+  const pending = f.scheduler.tick();
+  while (!resolveSubmit) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.scheduler.view().attemptActive, true);
+  assert.equal(f.scheduler.reconcileSubmitted({ id: 'a', bvid: 'BV1live00000' }), false);
+  assert.throws(() => f.scheduler.save({ action: 'reconcile', revision: f.scheduler.view().revision, resolution: 'submitted', confirmed: true }), /仍在执行中/);
+  resolveSubmit({ ok: true, outcome: 'submitted', bvid: 'BV1done00000' });
+  await pending;
+  assert.equal(f.scheduler.view().attemptActive, false);
+
+  const file = path.join(f.root, 'out/.publish-schedule/state.json');
+  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  raw.lastAttempt = { attemptId: 'orphan-2', state: 'running', id: 'b', at: date(10, 25) };
+  fs.writeFileSync(file, JSON.stringify(raw));
+  assert.equal(f.scheduler.reconcileSubmitted({ id: 'b', bvid: 'BV1manual000', finishedAt: date(10, 30) }), true);
+  const after = f.scheduler.view();
+  assert.equal(after.lastAttempt.state, 'submitted');
+  assert.equal(after.lastAttempt.bvid, 'BV1manual000');
+  assert.deepEqual(after.ids, []);
+  assert.equal(after.lastSubmittedAt, date(10, 30));
 });
 
 test('日历展示七天；已过和已用的时点排除，时间倒拨不重发', () => {

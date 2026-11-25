@@ -110,13 +110,24 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
       box.textContent = (ready
         ? (state.enabled ? `成片后自动投稿已开启 · 最短间隔 ${state.trigger.intervalSeconds} 秒。` : '成片后自动投稿已暂停。')
         : (state.enabled ? '每日发布已开启，只在排程时点由服务端尝试发布。' : '每日发布已暂停。')) +
-        (last?.state === 'running' ? ' 投稿进行中或上次未完整结束；如服务中断，请先人工核对稿件。' : '') +
+        (last?.state === 'running'
+          ? (state.attemptActive
+            ? ' 投稿进行中，请等待本次处理结束。'
+            : ` 上次投稿${last.id ? `（${last.id}）` : ''}未完整结束；请先核对 B 站稿件管理后，用下方按钮解除阻断。`)
+          : '') +
         (state.accountMatches === false ? ' 账号已变化，请重新确认。' : '') +
         (last?.state === 'waiting' ? (ready ? ` 等待制作完成：${last.message || '项目制作中'}。`
           : ` 上次时点等待制作完成：${last.message || '项目正在制作或被制作锁占用'}；已跳过该时点，等下个排程时点。`) : '') +
         (last?.state === 'failed' ? ` 上次未完成：${last.message || last.outcome}，不会自动重试。` : '') +
         (last?.state === 'submitted' ? ` 最近已提交：${last.id}${last.bvid ? ' · ' + last.bvid : ''}。${last.message || ''}` : '') +
         (state.pauseReason ? ' ' + state.pauseReason : '') + (state.error ? ' ' + state.error : '');
+    }
+    const reconcileWrap = $('pubScheduleReconcile');
+    if (reconcileWrap) {
+      const showReconcile = Boolean(state && !readError && protocolCompatible && state.lastAttempt?.state === 'running' && !state.attemptActive);
+      reconcileWrap.hidden = !showReconcile;
+      if ($('pubScheduleReconcileSubmitted')) $('pubScheduleReconcileSubmitted').disabled = saving || reading || !showReconcile;
+      if ($('pubScheduleReconcileNotSubmitted')) $('pubScheduleReconcileNotSubmitted').disabled = saving || reading || !showReconcile;
     }
     $('pubScheduleError').textContent = actionError;
     if (!state) {
@@ -229,10 +240,35 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
     if (times().length >= 24) { notice('每天最多设置 24 个时点。', 'bad'); return; }
     addTime('12:00'); markDirty();
   };
+  async function reconcileInterrupted(resolution) {
+    if (saving || reading || !state || readError || !protocolCompatible || state.lastAttempt?.state !== 'running' || state.attemptActive) return;
+    const target = state.lastAttempt.id || '上一支作品';
+    const msg = resolution === 'submitted'
+      ? `确认「${target}」已经手动投稿或已在 B 站收到稿件？\n\n确认后将该记录标记为已提交（不再重复自动投稿），并解除排程阻断。`
+      : `确认 B 站「稿件管理」中没有收到「${target}」？\n\n确认后将解除上次中断留下的排程阻断；自动发布保持暂停，核对队列后可重新启用。`;
+    if (!confirm(msg)) return;
+    const oldRevision = state.revision;
+    saving = true; reading = false; requestVersion++; actionError = ''; paintState();
+    try {
+      const result = await request('/schedule', {
+        method: 'POST',
+        body: { action: 'reconcile', revision: state.revision, resolution, confirmed: true },
+      });
+      checkProtocol(result); state = result; readError = '';
+      if (revision === oldRevision || !dirty) revision = state.revision;
+      if (!dirty) restoreForm(state);
+      notice('已解除上次未闭合的投稿记录；现在可修改排程或点击「确认并启用自动发布」。', 'ok');
+    } catch (error) {
+      actionError = '核对解除失败：' + errorText(error);
+      notice(actionError, 'bad');
+    } finally { saving = false; paintState(); paintSelection(); }
+  }
   $('pubScheduleSave').onclick = () => mutate('save');
   $('pubScheduleEnable').onclick = () => mutate('enable');
   $('pubSchedulePause').onclick = () => mutate('pause');
   $('pubScheduleRetry').onclick = () => refresh({ rebase: true });
+  if ($('pubScheduleReconcileSubmitted')) $('pubScheduleReconcileSubmitted').onclick = () => reconcileInterrupted('submitted');
+  if ($('pubScheduleReconcileNotSubmitted')) $('pubScheduleReconcileNotSubmitted').onclick = () => reconcileInterrupted('not-submitted');
   const timer = setInterval(() => { if (!saving && !reading && !document.hidden) refresh(); }, 15000);
   window.addEventListener('pagehide', () => clearInterval(timer), { once: true });
   paintState();

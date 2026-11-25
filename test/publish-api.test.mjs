@@ -140,6 +140,104 @@ test('HTTP 路由：发布接口挂在本地服务上，且写请求要过同源
   }
 });
 
+test('排程遗留 running 时：手动投稿成功或账号日志已有 submitted 会自动闭合排程阻断，也可人工 reconcile', async t => {
+  const { root, home } = tmp(t);
+  writeCredential(home, complete);
+  fs.mkdirSync(path.join(root, 'projects/demo'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'projects/external-post'), { recursive: true });
+  const videoFile = path.join(root, 'projects/demo/demo-video.mp4');
+  fs.writeFileSync(videoFile, 'fake-mp4-bytes');
+  const api = createPublishApi({
+    root,
+    home,
+    getDraft: async id => ({
+      id,
+      dir: path.join(root, 'projects', id),
+      fields: { title: '测试标题', desc: '简介', tags: 'AI,科普' },
+      copy: { title: '测试标题', desc: '简介', tags: ['AI', '科普'] },
+      publish: { ok: true },
+      coverWanted: false,
+      cover: { ok: false },
+      video: { file: 'demo-video.mp4', path: videoFile, bytes: 14, duration: 30 },
+      warnings: [],
+      blockers: [],
+      task: { status: 'completed', running: false, productionBusy: false },
+    }),
+    createClient: () => ({
+      partitions: async () => ({ live: true, taxonomy: 'legacy-tid', list: [{ id: 231, name: '计算机技术', parent: '科技' }] }),
+      uploadVideo: async () => ({ filename: 'upos_123', chunks: 1 }),
+      buildPayload: p => p,
+      submit: async () => ({ aid: 1, bvid: 'BV1manual777' }),
+    }),
+  });
+
+  const enabled = await api.saveSchedule({
+    revision: 0,
+    action: 'enable',
+    confirmed: true,
+    trigger: { kind: 'ready', intervalSeconds: 480 },
+    scope: { kind: 'production-queue' },
+    partition: { tid: 231, partitionTaxonomy: 'legacy-tid', label: '计算机技术' },
+  });
+  const scheduleFile = path.join(root, 'out/.publish-schedule/state.json');
+  const raw = JSON.parse(fs.readFileSync(scheduleFile, 'utf8'));
+  raw.lastAttempt = { attemptId: 'interrupted-1', state: 'running', id: 'demo', slot: 'ready', at: Date.now() - 5000 };
+  fs.writeFileSync(scheduleFile, JSON.stringify(raw));
+
+  // 未手动投稿前直接改间隔应报人工核对
+  assert.throws(() => api.saveSchedule({
+    revision: enabled.revision,
+    action: 'enable',
+    confirmed: true,
+    trigger: { kind: 'ready', intervalSeconds: 300 },
+    scope: { kind: 'production-queue' },
+    partition: { tid: 231, partitionTaxonomy: 'legacy-tid', label: '计算机技术' },
+  }), /人工核对/);
+
+  // 手动提交成功后，自动同步排程记录并允许更改投稿间隔
+  const sub = await api.submit({
+    id: 'demo',
+    title: '测试标题',
+    desc: '简介',
+    tags: 'AI,科普',
+    copyright: 1,
+    tid: 231,
+    partitionTaxonomy: 'legacy-tid',
+    cover: false,
+    confirmed: true,
+  });
+  assert.equal(sub.ok, true, sub.message);
+  const afterManual = await api.schedule();
+  assert.equal(afterManual.lastAttempt.state, 'submitted');
+  assert.equal(afterManual.lastAttempt.bvid, 'BV1manual777');
+
+  const updated = await api.saveSchedule({
+    revision: afterManual.revision,
+    action: 'enable',
+    confirmed: true,
+    trigger: { kind: 'ready', intervalSeconds: 300 },
+    scope: { kind: 'production-queue' },
+    partition: { tid: 231, partitionTaxonomy: 'legacy-tid', label: '计算机技术' },
+  });
+  assert.equal(updated.enabled, true);
+  assert.equal(updated.trigger.intervalSeconds, 300);
+
+  // 若用户在外部网页手动投稿，也可通过 action: 'reconcile' 显式核对解除阻断并登记防重指纹
+  const raw2 = JSON.parse(fs.readFileSync(scheduleFile, 'utf8'));
+  raw2.lastAttempt = { attemptId: 'interrupted-2', state: 'running', id: 'external-post', slot: 'ready', at: Date.now() - 2000 };
+  fs.writeFileSync(scheduleFile, JSON.stringify(raw2));
+  const cur2 = await api.schedule();
+  assert.equal(cur2.lastAttempt.state, 'running');
+  const reconciled = await api.saveSchedule({
+    revision: cur2.revision,
+    action: 'reconcile',
+    resolution: 'submitted',
+    confirmed: true,
+  });
+  assert.equal(reconciled.lastAttempt.state, 'submitted');
+  assert.equal(reconciled.enabled, false);
+});
+
 test('HTTP：没有默认项目时仍可检查投稿信息、读取批量状态', async t => {
   const { root, home } = tmp(t);
   const { startServer } = await import('../lib/server.mjs');

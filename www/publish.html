@@ -171,6 +171,10 @@ details.pub-jsonbox summary:hover{color:var(--ink)}
       </div>
       <p id="pubScheduleDirty" class="pub-hint" aria-live="polite"></p>
       <p id="pubScheduleStatus" class="pub-hint" role="status" aria-live="polite">正在读取排程…</p>
+      <div id="pubScheduleReconcile" class="pub-batch-row" hidden>
+        <button id="pubScheduleReconcileSubmitted" type="button" class="pub-btn">已核对：已在平台发布（不再重投）</button>
+        <button id="pubScheduleReconcileNotSubmitted" type="button" class="pub-btn">已核对：平台未收稿（仅解除阻断）</button>
+      </div>
       <p id="pubScheduleError" class="pub-hint bad" role="alert"></p>
       <button id="pubScheduleRetry" type="button" class="pub-btn">重新读取排程</button>
       <p id="pubScheduleNext" class="pub-hint"></p>

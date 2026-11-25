@@ -23,6 +23,8 @@ const CSS = `
 .vh-ap-status strong{color:var(--ink);font-weight:600}
 .vh-ap-alert{margin:8px 0 0;padding:8px 12px;border-radius:11px;font-size:12px;line-height:1.55;
   background:var(--lg-runbar-warn-bg,rgba(234,182,118,.12));border:1px solid var(--lg-runbar-warn-border,rgba(234,182,118,.32));color:var(--ink)}
+.vh-ap-alert-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:7px}
+.vh-ap-alert-actions .btn{font-size:11.5px;padding:4px 10px}
 .vh-ap-metrics{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:11.5px;color:var(--ink3)}
 .vh-ap-metrics b{color:var(--ink2);font-weight:600}
 .vh-ap-settings{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
@@ -78,7 +80,13 @@ function mount() {
       <button type="button" class="btn primary" id="apToggleBtn">开启全自动巡航</button>
     </div>
     <p class="vh-ap-status" id="apStatus">开启后将按设定方向自动离线出题、联网核查线索入队、隔 5 分钟自动制作视频，并联动发布台隔 5 分钟自动投稿 B 站（不限量，遇限流或报错立刻熔断）。</p>
-    <div class="vh-ap-alert hidden" id="apAlert" role="status"></div>
+    <div class="vh-ap-alert hidden" id="apAlert" role="status">
+      <div id="apAlertText"></div>
+      <div class="vh-ap-alert-actions hidden" id="apAlertActions">
+        <button type="button" class="btn" id="apReconcileSubmitted">已在 B 站发过（解除阻断）</button>
+        <button type="button" class="btn" id="apReconcileNotSubmitted">B 站未收稿（解除阻断）</button>
+      </div>
+    </div>
     <div class="vh-ap-metrics" id="apMetrics"></div>
     <details class="vh-ap-settings" id="apSettings">
       <summary>巡航参数设置（方向 / 间隔 / 模式）</summary>
@@ -115,6 +123,8 @@ function mount() {
   const $ = id => box.querySelector('#' + id);
   let latest = null;
   let busy = false;
+  let reconciling = false;
+  let actionAlert = '';
   let formSeeded = false;
   let pollTimer = null;
 
@@ -171,17 +181,33 @@ function mount() {
       statusEl.textContent = `待命：方向「${cfg.query || 'AI、LLM、Agent、机器学习'}」，生成间隔 ${cfg.buildGapMinutes ?? 5} 分钟，自动投稿间隔 ${Math.round((cfg.publishIntervalSeconds || 300) / 60)} 分钟，每天不限量（遇 B 站限流或制作报错自动熔断）。`;
     }
 
+    const pub = data.publish;
+    const interrupted = Boolean(pub?.lastAttempt?.state === 'running' && !pub.attemptActive);
+    const interruptedHint = interrupted
+      ? `上次自动投稿${pub.lastAttempt.id ? `「${pub.lastAttempt.id}」` : ''}因服务中断未完整闭合记录；若你已手动投稿或核对过 B 站稿件管理，点击下方按钮即可解除阻断。`
+      : '';
     const alertEl = $('apAlert');
-    const notice = data.pausedReason || data.publishNotice || '';
+    const alertTextEl = $('apAlertText');
+    const alertActionsEl = $('apAlertActions');
+    const notice = actionAlert || data.pausedReason || data.publishNotice || interruptedHint || '';
     if (notice) {
-      alertEl.textContent = notice;
+      alertTextEl.textContent = notice;
       alertEl.classList.remove('hidden');
     } else {
+      alertTextEl.textContent = '';
       alertEl.classList.add('hidden');
     }
+    if (interrupted) {
+      alertActionsEl.classList.remove('hidden');
+      $('apReconcileSubmitted').disabled = busy || reconciling;
+      $('apReconcileNotSubmitted').disabled = busy || reconciling;
+    } else {
+      alertActionsEl.classList.add('hidden');
+    }
 
-    const pub = data.publish;
     const pubText = !pub ? '投稿状态未读取'
+      : pub.lastAttempt?.state === 'running' && pub.attemptActive ? `自动投稿上传中（${pub.lastAttempt.id || '当前作品'}）`
+      : interrupted ? `自动投稿待核对（上次「${pub.lastAttempt.id || '作品'}」中断未闭合）`
       : pub.enabled ? `自动投稿开启（${Math.round((pub.intervalSeconds || 300) / 60)} 分钟/支 · ${pub.partitionLabel || '已选分区'}）`
       : pub.pauseReason ? `自动投稿已暂停（${pub.pauseReason}）`
       : '自动投稿未开启（开启巡航时自动联动）';
@@ -210,10 +236,51 @@ function mount() {
     if (!document.hidden) void refresh();
   });
 
+  async function reconcilePublishAttempt(resolution) {
+    if (busy || reconciling) return;
+    const itemId = latest?.publish?.lastAttempt?.id || '上一支稿件';
+    const promptText = resolution === 'submitted'
+      ? `确认「${itemId}」已经手动投稿或已在 B 站收到稿件？\n\n确认后将该记录标记为已提交（不再重复自动投稿），并解除排程阻断。`
+      : `确认 B 站「稿件管理」中没有收到「${itemId}」？\n\n确认后将解除上次中断留下的排程阻断（若本地项目仍在队列中，后续可正常自动投稿）。`;
+    if (!confirm(promptText)) return;
+    reconciling = true;
+    actionAlert = '';
+    render(latest || {});
+    try {
+      let revision = latest?.publish?.revision;
+      if (!Number.isInteger(revision)) {
+        const cur = await requestJSON('/_api/publish/schedule', { cache: 'no-store' });
+        revision = cur?.revision;
+      }
+      await requestJSON('/_api/publish/schedule', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'reconcile', revision, resolution, confirmed: true }),
+      });
+      const res = await requestJSON('/_api/autopilot', {
+        method: latest?.active ? 'POST' : 'GET',
+        ...(latest?.active
+          ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'config', config: readFormConfig() }) }
+          : { cache: 'no-store' }),
+      });
+      render(res.autopilot || res);
+    } catch (error) {
+      actionAlert = '解除投稿阻断失败：' + error.message;
+      render(latest || {});
+    } finally {
+      reconciling = false;
+      render(latest || {});
+    }
+  }
+
+  $('apReconcileSubmitted').onclick = () => { void reconcilePublishAttempt('submitted'); };
+  $('apReconcileNotSubmitted').onclick = () => { void reconcilePublishAttempt('not-submitted'); };
+
   $('apToggleBtn').onclick = async () => {
-    if (busy) return;
+    if (busy || reconciling) return;
     const active = Boolean(latest?.active);
     busy = true;
+    actionAlert = '';
     render(latest || {});
     try {
       const body = active
@@ -228,8 +295,7 @@ function mount() {
       render(res.autopilot || res);
       $('apSaveMsg').textContent = '';
     } catch (error) {
-      $('apAlert').textContent = (active ? '停止巡航失败：' : '启动巡航失败：') + error.message;
-      $('apAlert').classList.remove('hidden');
+      actionAlert = (active ? '停止巡航失败：' : '启动巡航失败：') + error.message;
     } finally {
       busy = false;
       render(latest || {});
@@ -239,6 +305,7 @@ function mount() {
   $('apSaveBtn').onclick = async () => {
     $('apSaveBtn').disabled = true;
     $('apSaveMsg').textContent = '保存中…';
+    actionAlert = '';
     try {
       const res = await requestJSON('/_api/autopilot', {
         method: 'POST',
@@ -246,7 +313,7 @@ function mount() {
         body: JSON.stringify({ action: 'config', config: readFormConfig() }),
       });
       render(res.autopilot || res);
-      $('apSaveMsg').textContent = '已保存巡航参数。';
+      $('apSaveMsg').textContent = latest?.active ? '已保存巡航参数并同步自动投稿设置。' : '已保存巡航参数。';
     } catch (error) {
       $('apSaveMsg').textContent = '保存失败：' + error.message;
     } finally {

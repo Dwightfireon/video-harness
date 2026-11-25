@@ -142,3 +142,79 @@ test('全自动巡航：自动调查失败未入队时透出具体失败原因�
   assert.match(snap.pausedReason, /HTTP 429/);
   assert.match(snap.pausedReason, /稍等几分钟再试/);
 });
+
+test('全自动巡航：上次投稿中断未闭合时在解除阻断后自动恢复排程联动并清除报错，且不误触熔断', async t => {
+  let syncCalls = 0;
+  let scheduleState = {
+    revision: 5,
+    enabled: true,
+    attemptActive: false,
+    pauseReason: '',
+    trigger: { kind: 'ready', intervalSeconds: 480 },
+    scope: { kind: 'production-queue' },
+    partition: { tid: 21, label: '人工智能（1011）' },
+    lastAttempt: { state: 'running', id: '公交免费以后马路上真的会少车吗', at: 1_699_999_900_000 },
+  };
+  const h = makeHarness(t, {
+    getPublishSchedule: async () => scheduleState,
+    syncPublishSchedule: async intervalSeconds => {
+      syncCalls += 1;
+      if (scheduleState.lastAttempt?.state === 'running') {
+        return {
+          synced: false,
+          interruptedAttempt: { id: scheduleState.lastAttempt.id, revision: scheduleState.revision },
+          notice: '自动投稿未自动联动：上次自动投稿因服务中断未完整闭合记录。',
+        };
+      }
+      scheduleState = {
+        ...scheduleState,
+        enabled: true,
+        trigger: { kind: 'ready', intervalSeconds },
+      };
+      return { synced: true };
+    },
+  });
+  h.queue.items.push({ id: 'q1', topic: '新选题' });
+
+  // 启动并修改投稿间隔为 300s，因遗留 running 暂未同步
+  const started = await h.autopilot.start({ publishIntervalSeconds: 300 });
+  assert.equal(started.active, true);
+  assert.match(started.publishNotice, /未完整闭合记录/);
+  assert.equal(syncCalls, 1);
+
+  // 场景 A：人工核对为“未收稿”（outcome=interrupted, enabled=false）时，tick 自动补同步且不误判为投稿失败熔断
+  scheduleState = {
+    ...scheduleState,
+    enabled: false,
+    lastAttempt: {
+      state: 'failed',
+      outcome: 'interrupted',
+      id: '公交免费以后马路上真的会少车吗',
+      at: 1_699_999_900_000,
+      finishedAt: 1_700_000_010_000,
+    },
+  };
+  const healed = await h.autopilot.tick();
+  assert.equal(healed.active, true);
+  assert.equal(healed.publishNotice, null);
+  assert.equal(healed.publish.enabled, true);
+  assert.equal(healed.publish.intervalSeconds, 300);
+
+  // 场景 B：巡航运行中正在真实上传时修改投稿间隔，挂起等待上传结束后自动同步
+  scheduleState = {
+    ...scheduleState,
+    attemptActive: true,
+    lastAttempt: { state: 'running', id: '正在上传的作品', at: 1_700_000_020_000 },
+  };
+  const pending = await h.autopilot.updateConfig({ publishIntervalSeconds: 600 });
+  assert.equal(pending.config.publishIntervalSeconds, 600);
+  // 模拟当前上传正常结束
+  scheduleState = {
+    ...scheduleState,
+    attemptActive: false,
+    lastAttempt: { state: 'submitted', outcome: 'submitted', id: '正在上传的作品', finishedAt: 1_700_000_030_000 },
+  };
+  await h.autopilot.syncPublish();
+  assert.equal(h.autopilot.snapshot().publishNotice, null);
+  assert.equal(h.autopilot.snapshot().publish.intervalSeconds, 600);
+});
