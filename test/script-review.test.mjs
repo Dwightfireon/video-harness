@@ -43,6 +43,22 @@ test('clarity 检测开场术语过密、单场术语过密与百分比未入来
   assert.ok(res.warn.some(w => w.includes('81.18%') && w.includes('数字与来源')));
 });
 
+test('clarity 检测反人类长精确数字口播与过多场数预警，且审校提示词含最小必要前提原则', t => {
+  const scenes = Array.from({ length: 10 }, (_, i) => [
+    `## S${i + 1} · 场次${i + 1}`,
+    i === 0 ? '1. 上下文窗口是一百零四万八千五百七十六个单位，输出上限六万五千五百三十六。' : '1. 这里推进下一步具体变化。',
+    i === 0 ? '← 依赖：无' : `← 依赖：S${i}`,
+    '',
+  ].join('\n')).join('\n');
+  const dir = makeProject(t, `# 测试\n\n${scenes}`);
+  const res = analyzeClarity(dir);
+  assert.ok(res.warn.some(w => w.includes('一百零四万八千五百七十六')));
+  assert.ok(res.warn.some(w => w.includes('10 场偏多')));
+  const prompt = buildReviewPrompt({ script: scenes, clarity: res, pacing: { findings: [] } });
+  assert.match(prompt, /最小必要前提/);
+  assert.match(prompt, /一百零四万八千五百七十六/);
+});
+
 test('resolveReviewModel 按 CLI > 环境变量 > 设置文件 reviewModel > 默认模型分层', t => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'vh-review-home-'));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));

@@ -408,6 +408,21 @@ test('research caps stop repeated URL / excess searches, interrupt the session a
   }
 });
 
+test('403/失败的 webfetch 不会提前耗尽 8 篇有效阅读配额，拿到有效原文仍可正常入档', { timeout: 15000 }, async t => {
+  const events = researchEvents();
+  const blocked = Array.from({ length: 5 }, (_, i) => ({
+    type: 'tool_use',
+    part: { tool: 'webfetch', state: { status: 'error', input: { url: `https://paywall.test/p-${i}` }, error: 'HTTP 403 Access Denied' } },
+  }));
+  const okFetch = events.find(event => event.part?.tool === 'webfetch');
+  const searches = events.filter(event => event.part?.tool === 'websearch');
+  const scripted = [...searches, ...blocked, okFetch, events.at(-1)];
+  const { root } = fixture(t, { research: scripted }); seed(root);
+  const result = await discoverTopics(root, { operation: 'research', topicId: 'q', timeoutMs: 5000 });
+  assert.equal(result.ok, true, result.reason);
+  assert.equal(result.updated.canEnqueue, true);
+});
+
 test('question tasks ignore web evidence watchdog yet keep wall timeout/interruption/output cap', { timeout: 15000 }, async t => {
   const failed = i => ({ type: 'tool_use', part: { tool: 'webfetch', state: { status: 'error', input: { url: 'https://source.test/' + i }, error: 'HTTP 403' } } });
   const { root, set } = fixture(t, { questions: [...Array.from({ length: 10 }, (_, i) => failed(i)), text([question()])], questionsDelayMs: 1200 });
