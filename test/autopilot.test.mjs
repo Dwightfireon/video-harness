@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createAutopilot, DEFAULT_AUTOPILOT_CONFIG } from '../lib/autopilot.mjs';
+import { createPublishScheduler } from '../lib/publish-scheduler.mjs';
+import { stripProjectCaches } from '../lib/disk-hygiene.mjs';
 
 function makeHarness(t, overrides = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vh-autopilot-'));
@@ -126,6 +128,7 @@ test('全自动巡航：配置持久化保存，且默认参数符合用户约�
 
 test('全自动巡航：自动调查失败未入队时透出具体失败原因与建议，不笼统吞错', async t => {
   const h = makeHarness(t, {
+    maxDiscoveryFailures: 1,
     discoverAndQueue: async () => ({
       ok: true,
       results: [{ id: 'c1', topic: '示例问题' }],
@@ -141,6 +144,130 @@ test('全自动巡航：自动调查失败未入队时透出具体失败原因�
   assert.equal(snap.phase, 'paused');
   assert.match(snap.pausedReason, /HTTP 429/);
   assert.match(snap.pausedReason, /稍等几分钟再试/);
+});
+
+test('全自动巡航：优先消化旧候选但全部调查失败时，提示文案明确指向已有候选', async t => {
+  const h = makeHarness(t, {
+    maxDiscoveryFailures: 1,
+    discoverAndQueue: async () => ({
+      ok: true,
+      reusedExisting: true,
+      results: [],
+      added: [],
+      researchFailures: [{ topicId: 'old-1', topic: '旧候选题目', reason: '所有站点均返回 403' }],
+      hints: ['优先换官方公告、论文或原始数据这类不需要登录的来源'],
+    }),
+  });
+  await h.autopilot.start();
+  await new Promise(r => setTimeout(r, 20));
+  const snap = h.autopilot.snapshot();
+  assert.equal(snap.active, false);
+  assert.equal(snap.phase, 'paused');
+  assert.match(snap.pausedReason, /本轮优先调查已有候选选题，但均未入队/);
+  assert.match(snap.pausedReason, /403/);
+});
+
+test('全自动巡航：选题遇到 403 等软失败时冷却后自动换一批重找；连续多次失败或额度硬故障才熔断', async t => {
+  let round = 0;
+  const h = makeHarness(t, {
+    maxDiscoveryFailures: 3,
+    discoveryRetryDelayMs: 60_000,
+    discoverAndQueue: async () => {
+      round += 1;
+      if (round === 1) {
+        return {
+          ok: true,
+          added: [],
+          researchFailures: [{ topicId: 'c1', topic: '被拦截题', reason: '已经累计 8 次读不到原文' }],
+          hints: ['优先换官方公告、论文或原始数据'],
+        };
+      }
+      const item = { id: `auto-${round}`, topic: `补位成功选题 ${round}` };
+      h.queue.items.push(item);
+      return { ok: true, results: [item], added: [item] };
+    },
+  });
+
+  await h.autopilot.start({ buildGapMinutes: 0 });
+  await new Promise(r => setTimeout(r, 20));
+  const cooling = h.autopilot.snapshot();
+  assert.equal(cooling.active, true, '单轮 403 不应直接暂停巡航');
+  assert.equal(cooling.phase, 'retrying');
+  assert.equal(cooling.discoveryFailures, 1);
+  assert.match(cooling.lastWarning, /60 秒后自动换一批重找（第 1\/3 次）/);
+
+  // 冷却未到不重复触发
+  h.advance(30_000);
+  await h.autopilot.tick();
+  assert.equal(round, 1);
+
+  // 冷却到期后自动重试并入队开工
+  h.advance(30_000);
+  await h.autopilot.tick();
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(round, 2);
+  assert.equal(h.started.length, 1);
+  assert.equal(h.autopilot.snapshot().discoveryFailures, 0);
+  assert.equal(h.autopilot.snapshot().phase, 'building');
+
+  // 硬故障（websearch 402 无额度）立即熔断，不盲目重试
+  const hHard = makeHarness(t, {
+    maxDiscoveryFailures: 3,
+    discoveryRetryDelayMs: 60_000,
+    discoverAndQueue: async () => ({
+      ok: true,
+      hardSearchFailure: true,
+      added: [],
+      researchFailures: [{ topicId: 'c2', topic: '无额度题', reason: '搜索服务没有额度或未授权：websearch 返回 HTTP 402' }],
+    }),
+  });
+  await hHard.autopilot.start();
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(hHard.autopilot.snapshot().active, false);
+  assert.equal(hHard.autopilot.snapshot().phase, 'paused');
+  assert.match(hHard.autopilot.snapshot().pausedReason, /HTTP 402/);
+});
+
+test('全自动巡航：遇到已有检索占用锁时不计失败且 15 秒后重检；队列有存货时边制作边后台补题', async t => {
+  let calls = 0;
+  const h = makeHarness(t, {
+    maxDiscoveryFailures: 2,
+    discoveryRetryDelayMs: 45_000,
+    discoveryBusyDelayMs: 15_000,
+    discoverAndQueue: async () => {
+      calls += 1;
+      if (calls <= 3) {
+        return { ok: false, busy: true, reason: '已有选题检索在运行，请稍后再试', added: [] };
+      }
+      const item = { id: `auto-${calls}`, topic: `补位选题 ${calls}` };
+      h.queue.items.push(item);
+      return { ok: true, results: [item], added: [item] };
+    },
+  });
+
+  await h.autopilot.start({ minQueueSize: 2, buildGapMinutes: 0 });
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(calls, 1);
+  assert.equal(h.autopilot.snapshot().active, true);
+  assert.equal(h.autopilot.snapshot().discoveryFailures, 0, '锁占用不应计入失败次数');
+
+  // 连续 3 次锁占用都不应触发 2 次失败熔断
+  for (let i = 2; i <= 3; i++) {
+    h.advance(15_000);
+    await h.autopilot.tick();
+    await new Promise(r => setTimeout(r, 20));
+    assert.equal(calls, i);
+    assert.equal(h.autopilot.snapshot().active, true);
+    assert.equal(h.autopilot.snapshot().discoveryFailures, 0);
+  }
+
+  // 即使 minQueueSize=2，只要队列里出现了 1 条待做选题，立刻开始制作，不干等第 2 条
+  h.queue.items.push({ id: 'q-ready', topic: '先开工的存货' });
+  h.advance(15_000);
+  await h.autopilot.tick();
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(h.started.length, 1);
+  assert.equal(h.started[0].topic, '先开工的存货');
 });
 
 test('全自动巡航：上次投稿中断未闭合时在解除阻断后自动恢复排程联动并清除报错，且不误触熔断', async t => {
@@ -217,4 +344,200 @@ test('全自动巡航：上次投稿中断未闭合时在解除阻断后自动�
   await h.autopilot.syncPublish();
   assert.equal(h.autopilot.snapshot().publishNotice, null);
   assert.equal(h.autopilot.snapshot().publish.intervalSeconds, 600);
+});
+
+test('全自动巡航：偶发模型/网关报错自动冷却续跑；单支仍失败时跳过继续，连续两支失败才熔断', async t => {
+  const resumed = [];
+  const h = makeHarness(t, {
+    maxProjectRetries: 1,
+    retryDelayMs: 30_000,
+    maxConsecutiveFailures: 2,
+    resumeItem: async rel => {
+      resumed.push(rel);
+      h.statuses.set(rel, { status: 'running', delivered: false });
+      return { status: 200, body: { ok: true, started: true, rel } };
+    },
+  });
+  h.queue.items.push({ id: 'q1', topic: '海底热泉' }, { id: 'q2', topic: '南极冰架' });
+  await h.autopilot.start({ buildGapMinutes: 0 });
+  assert.equal(h.started.length, 1);
+
+  // 第 1 支遇上游 400 失败 → 进入 retrying 冷却，不立即停航
+  h.statuses.set('projects/p-1', { status: 'failed', delivered: false, canResume: true, errorKind: 'execution', errorMessage: 'Upstream request failed: [400]' });
+  const waiting = await h.autopilot.tick();
+  assert.equal(waiting.active, true);
+  assert.equal(waiting.phase, 'retrying');
+  assert.match(waiting.lastWarning, /30 秒后自动续跑/);
+  assert.equal(resumed.length, 0);
+
+  // 推进 30 秒 → 自动续跑第 1 支
+  h.advance(30_000);
+  const retried = await h.autopilot.tick();
+  assert.equal(retried.active, true);
+  assert.equal(retried.phase, 'building');
+  assert.deepEqual(resumed, ['projects/p-1']);
+
+  // 续跑后仍失败 → 单支异常跳过并自动启动第 2 支，不打断整晚巡航
+  h.statuses.set('projects/p-1', { status: 'failed', delivered: false, canResume: true, errorKind: 'execution', errorMessage: 'Upstream request failed: [400]' });
+  const skipped = await h.autopilot.tick();
+  assert.equal(skipped.active, true);
+  assert.equal(skipped.skipped, 1);
+  assert.equal(h.started.length, 2);
+  assert.equal(skipped.currentTopic, '南极冰架');
+
+  // 第 2 支若遇配额不足（不可重试）→ 立即熔断并透出具体原因
+  h.statuses.set('projects/p-2', { status: 'failed', delivered: false, canResume: true, errorKind: 'quota', errorMessage: '模型渠道额度不足' });
+  const stopped = await h.autopilot.tick();
+  assert.equal(stopped.active, false);
+  assert.equal(stopped.phase, 'paused');
+  assert.match(stopped.pausedReason, /模型渠道额度不足/);
+});
+
+test('全自动巡航：视频发布成功后自动清理缓存并统计释放体积；关闭开关或清理报错不阻断巡航', async t => {
+  const pruned = [];
+  const errors = [];
+  const h = makeHarness(t, {
+    pruneProject: async id => {
+      pruned.push(id);
+      return { ok: true, freed: 2_500_000_000, removed: ['out/frames', 'out/seg', 'out/.voice-kokoro'] };
+    },
+    onError: err => errors.push(err),
+  });
+
+  assert.equal(DEFAULT_AUTOPILOT_CONFIG.autoPrune, true);
+  h.queue.items.push({ id: 'q1', topic: '缓存清理测试' }, { id: 'q2', topic: '停航前最后一支' });
+  await h.autopilot.start({ buildGapMinutes: 0 });
+  assert.equal(h.started.length, 1);
+
+  // 第 1 支制作完成，队列里第 2 支随即启动，此时第 1 支尚未发布不清理缓存
+  h.statuses.set('projects/p-1', { status: 'completed', delivered: true });
+  await h.autopilot.tick();
+  assert.equal(h.started.length, 2);
+  assert.equal(pruned.length, 0, '尚未发布前不清理缓存');
+
+  // 模拟发布台确认第 1 支收稿
+  h.advance(10_000);
+  h.setPublish({
+    enabled: true,
+    pauseReason: '',
+    trigger: { kind: 'ready', intervalSeconds: 300 },
+    scope: { kind: 'production-queue' },
+    partition: { label: '人工智能（1011）' },
+    lastAttempt: {
+      state: 'submitted',
+      outcome: 'submitted',
+      id: 'p-1',
+      bvid: 'BV1xx411c7mD',
+      finishedAt: 1_700_000_010_000,
+    },
+  });
+  const afterPub = await h.autopilot.tick();
+  assert.deepEqual(pruned, ['p-1']);
+  assert.equal(afterPub.prunedCount, 1);
+  assert.equal(afterPub.prunedBytes, 2_500_000_000);
+  assert.equal(afterPub.lastPruned.id, 'p-1');
+
+  // 再次 tick 不会对同一次投稿重复清理
+  await h.autopilot.tick();
+  assert.deepEqual(pruned, ['p-1']);
+
+  // 第 2 支制作完成并手动停止巡航后，若第 2 支随后完成投稿，仍自动清理；无关项目不清理
+  h.statuses.set('projects/p-2', { status: 'completed', delivered: true });
+  await h.autopilot.tick();
+  h.autopilot.stop({ reason: null });
+
+  await h.autopilot.onProjectPublished({ id: 'unrelated-project', finishedAt: 1_700_000_020_000 });
+  assert.deepEqual(pruned, ['p-1'], '巡航已停止且非本轮跟踪项目不应自动清缓存');
+
+  await h.autopilot.onProjectPublished({ id: 'p-2', finishedAt: 1_700_000_030_000 });
+  assert.deepEqual(pruned, ['p-1', 'p-2'], '本轮已生成项目在停航后完成发布仍应自动清缓存');
+
+  // 关闭 autoPrune 时不清理
+  h.autopilot.saveConfig({ autoPrune: false });
+  await h.autopilot.start({ buildGapMinutes: 0, autoPrune: false });
+  await h.autopilot.onProjectPublished({ id: 'p-3', finishedAt: 1_700_000_040_000 });
+  assert.deepEqual(pruned, ['p-1', 'p-2']);
+
+  // 清理抛出异常时绝不熔断停止巡航
+  const hErr = makeHarness(t, {
+    pruneProject: async () => { throw new Error('模拟磁盘忙'); },
+    onError: err => errors.push(err),
+  });
+  hErr.queue.items.push({ id: 'q1', topic: '容错测试' });
+  await hErr.autopilot.start({ buildGapMinutes: 0 });
+  hErr.setPublish({
+    enabled: true,
+    pauseReason: '',
+    trigger: { kind: 'ready', intervalSeconds: 300 },
+    scope: { kind: 'production-queue' },
+    partition: { label: '人工智能（1011）' },
+    lastAttempt: { state: 'submitted', outcome: 'submitted', id: 'p-1', finishedAt: 1_700_000_050_000 },
+  });
+  const stillActive = await hErr.autopilot.tick();
+  assert.equal(stillActive.active, true, '清缓存失败不应熔断停止巡航');
+  assert.ok(errors.some(e => /模拟磁盘忙/.test(e.message)));
+});
+
+test('发布排程 onSubmitted 联动巡航：收稿落盘后自动清掉 out/frames 等缓存并保留成片与文稿', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vh-ap-prune-e2e-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const projDir = path.join(root, 'projects', 'demo-video');
+  fs.mkdirSync(path.join(projDir, 'out', 'frames'), { recursive: true });
+  fs.mkdirSync(path.join(projDir, 'out', 'seg'), { recursive: true });
+  fs.mkdirSync(path.join(projDir, 'out', '.voice-kokoro'), { recursive: true });
+  fs.writeFileSync(path.join(projDir, 'PROJECT.json'), '{}');
+  fs.writeFileSync(path.join(projDir, '脚本.md'), '# 脚本');
+  fs.writeFileSync(path.join(projDir, '发布文案.md'), '# 发布文案');
+  fs.writeFileSync(path.join(projDir, 'out', 'video-voice.mp4'), Buffer.alloc(1024, 1));
+  fs.writeFileSync(path.join(projDir, 'out', 'frames', '000001.jpg'), Buffer.alloc(4096, 2));
+  fs.writeFileSync(path.join(projDir, 'out', 'seg', 'seg-001.mp4'), Buffer.alloc(2048, 3));
+  fs.writeFileSync(path.join(projDir, 'out', '.voice-kokoro', '001.wav'), Buffer.alloc(1024, 4));
+
+  let now = 1_700_000_000_000;
+  const autopilot = createAutopilot({
+    root,
+    clock: () => now,
+    intervalMs: 60_000,
+    readQueue: () => ({ items: [{ id: 'q1', topic: '测试', project: 'projects/demo-video' }] }),
+    isBusy: () => false,
+    inspectProject: async () => ({ status: 'completed', delivered: true }),
+    acquireLock: () => ({ release() {} }),
+    startItem: async () => ({ status: 200, body: { ok: true, started: true, rel: 'projects/demo-video' } }),
+    discoverAndQueue: async () => ({ ok: true, added: [] }),
+    pruneProject: async id => {
+      const cleaned = stripProjectCaches(path.join(root, 'projects', id), { keepSeg: false });
+      return { ok: true, freed: cleaned.freed, removed: cleaned.removed };
+    },
+  });
+  t.after(() => autopilot.close());
+  await autopilot.start({ minQueueSize: 1 });
+
+  const scheduler = createPublishScheduler({
+    root,
+    clock: () => now,
+    accountKey: () => 'acc-1',
+    listScopeIds: () => ['demo-video'],
+    getCandidate: async id => ({ id }),
+    submitOne: async () => ({ ok: true, outcome: 'submitted', bvid: 'BV1test123456' }),
+    onSubmitted: info => autopilot.onProjectPublished(info),
+  });
+  scheduler.save({
+    revision: 0,
+    action: 'enable',
+    confirmed: true,
+    trigger: { kind: 'ready', intervalSeconds: 300 },
+    scope: { kind: 'production-queue' },
+    partition: { tid: 231, label: '科技' },
+  });
+
+  const tickRes = await scheduler.tick();
+  assert.equal(tickRes.reason, 'submitted');
+  assert.equal(fs.existsSync(path.join(projDir, 'out', 'frames')), false, 'out/frames 应已清理');
+  assert.equal(fs.existsSync(path.join(projDir, 'out', 'seg')), false, 'out/seg 应已清理');
+  assert.equal(fs.existsSync(path.join(projDir, 'out', '.voice-kokoro')), false, 'out/.voice-* 应已清理');
+  assert.equal(fs.existsSync(path.join(projDir, 'out', 'video-voice.mp4')), true, '成片必须保留');
+  assert.equal(fs.existsSync(path.join(projDir, '脚本.md')), true, '脚本必须保留');
+  assert.equal(fs.existsSync(path.join(projDir, '发布文案.md')), true, '发布文案必须保留');
+  assert.equal(autopilot.snapshot().prunedCount, 1);
+  assert.equal(autopilot.snapshot().prunedBytes, 4096 + 2048 + 1024);
 });

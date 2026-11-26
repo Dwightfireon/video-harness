@@ -126,21 +126,29 @@ test('resolveAutoPublishPartition 优先使用作品已保存分区，其次 AI 
   assert.deepEqual(fromSaved, savedPartition);
   assert.equal(recommendCalls, 0);
 
+  let resolvedAi = null;
   const fromAi = await resolveAutoPublishPartition({
     draft: { savedForm: null },
     defaultPartition,
     catalog: HUMAN_CATALOG,
-    recommend: async () => ({ primary: { partition: { partitionTaxonomy: 'human-type2', tid: 21, humanType2: 1012 } } }),
+    recommend: async () => ({ primary: { label: '科技数码（1012）', reason: '硬件评测', partition: { partitionTaxonomy: 'human-type2', tid: 21, humanType2: 1012 } } }),
+    onResolved: info => { resolvedAi = info; },
   });
   assert.deepEqual(fromAi, { partitionTaxonomy: 'human-type2', tid: 21, humanType2: 1012 });
+  assert.equal(resolvedAi.source, 'ai');
+  assert.equal(resolvedAi.label, '科技数码（1012）');
 
+  let resolvedFallback = null;
   const fromFallback = await resolveAutoPublishPartition({
     draft: { savedForm: null },
     defaultPartition,
     catalog: HUMAN_CATALOG,
     recommend: async () => { throw new Error('临时网络波动'); },
+    onResolved: info => { resolvedFallback = info; },
   });
   assert.deepEqual(fromFallback, defaultPartition);
+  assert.equal(resolvedFallback.source, 'fallback');
+  assert.match(resolvedFallback.error, /临时网络波动/);
 });
 
 test('publish-api 暴露 recommendPartition 并读取脚本节选传给推荐器', async t => {

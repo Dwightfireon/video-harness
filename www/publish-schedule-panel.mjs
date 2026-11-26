@@ -31,11 +31,13 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
     remove.textContent = '移除'; remove.onclick = () => { row.remove(); markDirty(); };
     row.append(input, remove); $('pubScheduleTimes').append(row);
   }
+  const autoPartitionEnabled = () => $('pubScheduleAutoPartition') ? $('pubScheduleAutoPartition').checked : true;
   function restoreForm(data) {
     $('pubScheduleTimes').replaceChildren(); data.times.forEach(addTime);
     $('pubScheduleScope').value = data.scope?.kind || 'selected';
     $('pubScheduleTrigger').value = data.trigger?.kind || 'daily';
     $('pubScheduleInterval').value = data.trigger?.intervalSeconds ?? 180;
+    if ($('pubScheduleAutoPartition')) $('pubScheduleAutoPartition').checked = data.autoPartition !== false;
     partition = data.partition || null;
     paintPartitions();
     setSelection([...data.ids]);
@@ -49,9 +51,13 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
     if (unavailable) select.add(new Option(`${partition.label || partition.tid}（已保存）`, key));
     select.value = key;
     select.disabled = !state || !protocolCompatible || (!partitionOptions.size && !key);
+    if ($('pubScheduleAutoPartition')) $('pubScheduleAutoPartition').disabled = !state || !protocolCompatible;
     $('pubSchedulePartitionHint').textContent = partitionCatalog === 'loaded' && unavailable
       ? '已保存分区不在当前目录中；重新启用前请选择分区。'
-      : partitionCatalog === 'failed' ? '未能读取分区目录；可点页眉的「刷新」重试。' : '只用于定时发布，不影响单条投稿。';
+      : partitionCatalog === 'failed' ? '未能读取分区目录；可点页眉的「刷新」重试。'
+        : autoPartitionEnabled()
+          ? '投递前会先按每支视频内容由 AI 推荐分区；已单独保存分区的作品优先用已保存分区，AI 推荐失败时回退此兜底分区。'
+          : '未开启 AI 自动选区；自动发布将统一使用此分区（已单独保存分区的作品除外）。';
   }
   function paintControls() {
     $('pubScheduleSave').disabled = saving || reading || !state || Boolean(readError) || !protocolCompatible;
@@ -59,7 +65,10 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
     $('pubSchedulePause').disabled = saving || reading || !state?.enabled || Boolean(readError) || !protocolCompatible;
     $('pubScheduleRetry').disabled = saving || reading;
     $('pubScheduleSave').textContent = saving ? '正在处理…' : '保存排程';
-    $('pubScheduleDirty').textContent = dirty ? '有未保存的修改。保存只存配置并暂停，不会启用自动发布。' : '保存只存配置并暂停；启用需要另行确认。';
+    $('pubScheduleEnable').textContent = (dirty && state?.enabled) ? '保存并保持自动发布' : '确认并启用自动发布';
+    $('pubScheduleDirty').textContent = dirty
+      ? '有未保存的修改：点「保存排程」仅保存并暂停；直接点绿色按钮即可一步保存并生效（无需先点保存）。'
+      : '若首页已开启「全自动巡航」，巡航会自动同步并启用这里的设置，无需手动再点。';
     $('pubSchedulePartition').disabled = !state || !protocolCompatible || (!partitionOptions.size && !partition);
     $('pubScheduleTrigger').disabled = !readySupported;
     $('pubScheduleDaily').hidden = isReady();
@@ -137,7 +146,8 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
     }
     $('pubScheduleZone').textContent = `服务时区：${state.timezone}` +
       ` · 已保存范围：${state.scope?.kind === 'production-queue' ? '当前及今后制作队列' : '仅选定作品'}` +
-      (state.partition ? ` · 已保存分区：${state.partition.label || state.partition.tid}` : ' · 未保存分区');
+      (state.partition ? ` · 兜底分区：${state.partition.label || state.partition.tid}` : ' · 未保存分区') +
+      (state.autoPartition !== false ? ' · 投递前 AI 自动选区' : ' · 固定兜底分区');
     const ready = state.trigger?.kind === 'ready';
     $('pubScheduleCalendarWrap').hidden = ready;
     $('pubScheduleNext').textContent = (ready
@@ -204,12 +214,17 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
       const cadence = isReady()
         ? `成片后自动投稿。已有就绪作品可能立即开始投稿；上一支确认收稿后至少等 ${interval} 秒再投下一支。`
         : `每天：${[...new Set(selectedTimes)].sort().join('、')}（${state.timezone}）。每个时点最多发一支，没有就绪作品则跳过，不补发。`;
-      if (!confirm(`确认启用自动发布？\n\n${cadence}\n分区：${partition.label || partition.tid}\n${authorization}\n\n投稿使用各项目保存的文案、商业声明与上述分区，不使用右侧尚未保存的修改。失败即暂停。`)) return;
+      const partitionSummary = autoPartitionEnabled()
+        ? `投递前 AI 自动推荐分区（兜底：${partition.label || partition.tid}）`
+        : `${partition.label || partition.tid}`;
+      if (!confirm(`确认启用自动发布？\n\n${cadence}\n分区：${partitionSummary}\n${authorization}\n\n投稿使用各项目保存的文案、商业声明与上述分区策略，不使用右侧尚未保存的修改。失败即暂停。`)) return;
     }
     const submittedVersion = editVersion, oldRevision = state.revision;
     const body = action === 'pause' ? { action, revision: state.revision }
       : { action, revision, ...(trigger.kind === 'daily' ? { times: selectedTimes } : {}),
-          ...(readySupported ? { trigger } : {}), ids, scope: scope(), partition, ...(action === 'enable' ? { confirmed: true } : {}) };
+          ...(readySupported ? { trigger } : {}), ids, scope: scope(), partition,
+          ...($('pubScheduleAutoPartition') ? { autoPartition: autoPartitionEnabled() } : {}),
+          ...(action === 'enable' ? { confirmed: true } : {}) };
     saving = true; reading = false; requestVersion++; actionError = ''; paintState();
     try {
       const result = await request('/schedule', { method: 'POST', body });
@@ -236,6 +251,7 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
     partition = event.target.value ? partitionOptions.get(event.target.value) || partition : null;
     markDirty();
   };
+  if ($('pubScheduleAutoPartition')) $('pubScheduleAutoPartition').onchange = () => { paintPartitions(); markDirty(); };
   $('pubScheduleAdd').onclick = () => {
     if (times().length >= 24) { notice('每天最多设置 24 个时点。', 'bad'); return; }
     addTime('12:00'); markDirty();

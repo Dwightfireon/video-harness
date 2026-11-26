@@ -49,6 +49,7 @@ const PHASE_LABELS = {
   idle: '待命',
   discovering: '自动选题与联网调查中',
   building: '自动制作视频中',
+  retrying: '自动续跑等待中',
   cooldown: '生成间隔冷却中',
   paused: '已熔断暂停',
 };
@@ -58,6 +59,14 @@ function formatCountdown(targetAt) {
   const mm = String(Math.floor(sec / 60)).padStart(2, '0');
   const ss = String(sec % 60).padStart(2, '0');
   return `${mm}:${ss}`;
+}
+
+function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n >= 1073741824) return `${(n / 1073741824).toFixed(2)}GB`;
+  if (n >= 1048576) return `${(n / 1048576).toFixed(0)}MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(0)}KB`;
+  return `${n}B`;
 }
 
 function mount() {
@@ -112,6 +121,12 @@ function mount() {
         <label class="vh-ap-field" style="flex-direction:row;align-items:center;gap:6px">每次补题数
           <input type="number" id="apCount" min="1" max="10" value="3" style="width:68px">
         </label>
+        <label class="vh-ap-field" style="flex-direction:row;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="apAutoPartition" checked style="width:auto">投递前 AI 自动选区
+        </label>
+        <label class="vh-ap-field" style="flex-direction:row;align-items:center;gap:6px;cursor:pointer" title="仅清理渲染帧、分段与配音等可再生缓存；成片、字幕、文稿与素材完整保留">
+          <input type="checkbox" id="apAutoPrune" checked style="width:auto">发布后自动清缓存
+        </label>
         <button type="button" class="btn" id="apSaveBtn">保存设置</button>
         <a class="btn" href="/publish#publishSchedule">检查 B 站投稿状态 →</a>
         <span class="format-hint" id="apSaveMsg" role="status"></span>
@@ -135,6 +150,8 @@ function mount() {
       count: Number($('apCount').value) || 3,
       buildGapMinutes: Math.max(0, Number($('apBuildGap').value) || 0),
       publishIntervalSeconds: Math.max(60, Math.round((Number($('apPubGap').value) || 5) * 60)),
+      autoPartition: $('apAutoPartition').checked,
+      autoPrune: $('apAutoPrune').checked,
     };
   }
 
@@ -161,6 +178,8 @@ function mount() {
       $('apCount').value = cfg.count || 3;
       $('apBuildGap').value = cfg.buildGapMinutes ?? 5;
       $('apPubGap').value = Math.max(1, Math.round((cfg.publishIntervalSeconds || 300) / 60));
+      $('apAutoPartition').checked = cfg.autoPartition !== false;
+      $('apAutoPrune').checked = cfg.autoPrune !== false;
       formSeeded = true;
     }
 
@@ -170,6 +189,13 @@ function mount() {
         statusEl.innerHTML = `正在按方向「<strong>${esc(cfg.query)}</strong>」自动出题并逐条联网核查线索，合格后自动入队并开工…`;
       } else if (data.phase === 'building') {
         statusEl.innerHTML = `正在自动制作：<strong>${esc(data.currentTopic || data.currentProject || '队列项目')}</strong>（成片后将等待 ${cfg.buildGapMinutes ?? 5} 分钟再制作下一支，并由发布台自动投稿）。`;
+      } else if (data.phase === 'retrying') {
+        if (!data.currentProject && data.nextDiscoveryRetryAt > Date.now()) {
+          statusEl.innerHTML = `本轮自动补题暂未入队，将在 <strong>${formatCountdown(data.nextDiscoveryRetryAt)}</strong> 后自动换一批重找…`;
+        } else {
+          const waitText = data.nextRetryAt > Date.now() ? `将在 <strong>${formatCountdown(data.nextRetryAt)}</strong> 后` : '即将';
+          statusEl.innerHTML = `<strong>${esc(data.currentTopic || data.currentProject || '当前项目')}</strong> 遇到临时异常，${waitText}从断点自动续跑…`;
+        }
       } else if (data.phase === 'cooldown' && data.nextBuildAt > Date.now()) {
         statusEl.innerHTML = `上一支已交付，冷却倒计时 <strong>${formatCountdown(data.nextBuildAt)}</strong> 后自动制作下一支（发布台将按 ${Math.round((cfg.publishIntervalSeconds || 300) / 60)} 分钟间隔自动投稿）。`;
       } else {
@@ -178,7 +204,7 @@ function mount() {
     } else if (paused) {
       statusEl.textContent = '巡航已安全停止，正在制作的项目不受影响；排查下方原因后可一键重启。';
     } else {
-      statusEl.textContent = `待命：方向「${cfg.query || 'AI、LLM、Agent、机器学习'}」，生成间隔 ${cfg.buildGapMinutes ?? 5} 分钟，自动投稿间隔 ${Math.round((cfg.publishIntervalSeconds || 300) / 60)} 分钟，每天不限量（遇 B 站限流或制作报错自动熔断）。`;
+      statusEl.textContent = `待命：方向「${cfg.query || 'AI、LLM、Agent、机器学习'}」，生成间隔 ${cfg.buildGapMinutes ?? 5} 分钟，自动投稿间隔 ${Math.round((cfg.publishIntervalSeconds || 300) / 60)} 分钟，每天不限量（遇偶发报错自动续跑，连续失败或限流自动熔断）。`;
     }
 
     const pub = data.publish;
@@ -189,7 +215,7 @@ function mount() {
     const alertEl = $('apAlert');
     const alertTextEl = $('apAlertText');
     const alertActionsEl = $('apAlertActions');
-    const notice = actionAlert || data.pausedReason || data.publishNotice || interruptedHint || '';
+    const notice = actionAlert || data.pausedReason || data.publishNotice || data.lastWarning || interruptedHint || '';
     if (notice) {
       alertTextEl.textContent = notice;
       alertEl.classList.remove('hidden');
@@ -205,16 +231,21 @@ function mount() {
       alertActionsEl.classList.add('hidden');
     }
 
+    const partDesc = pub?.autoPartition !== false
+      ? `AI 自动选区（兜底 ${pub?.partitionLabel || '已选分区'}）`
+      : (pub?.partitionLabel || '已选分区');
     const pubText = !pub ? '投稿状态未读取'
       : pub.lastAttempt?.state === 'running' && pub.attemptActive ? `自动投稿上传中（${pub.lastAttempt.id || '当前作品'}）`
       : interrupted ? `自动投稿待核对（上次「${pub.lastAttempt.id || '作品'}」中断未闭合）`
-      : pub.enabled ? `自动投稿开启（${Math.round((pub.intervalSeconds || 300) / 60)} 分钟/支 · ${pub.partitionLabel || '已选分区'}）`
+      : pub.enabled ? `自动投稿开启（${Math.round((pub.intervalSeconds || 300) / 60)} 分钟/支 · ${partDesc}）`
       : pub.pauseReason ? `自动投稿已暂停（${pub.pauseReason}）`
       : '自动投稿未开启（开启巡航时自动联动）';
     $('apMetrics').innerHTML =
       `<span>待做队列 <b>${data.pendingCount ?? '-'}</b></span>` +
       `<span>本轮自动补题 <b>${data.discovered || 0}</b></span>` +
       `<span>本轮自动成片 <b>${data.completed || 0}</b></span>` +
+      (data.skipped ? `<span>异常跳过 <b>${data.skipped}</b></span>` : '') +
+      (data.prunedCount ? `<span>发布后已清缓存 <b>${data.prunedCount} 支（释放 ${formatBytes(data.prunedBytes)}）</b></span>` : '') +
       `<span>${esc(pubText)}</span>`;
   }
 

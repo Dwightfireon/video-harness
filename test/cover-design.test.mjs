@@ -7,6 +7,7 @@ import {
   formatCoverTitle,
   formatCoverSub,
   liftAccentForDark,
+  pickCoverPalette,
   buildHtml,
 } from '../lib/cover.mjs';
 
@@ -119,4 +120,32 @@ test('buildHtml：editorial 遵守无 bg/品牌水印契约，无 em.hl 左缩�
   assert.doesNotMatch(safeHtml, /<script>/);
   assert.match(safeHtml, /&lt;script&gt;/);
   assert.match(safeHtml, /&lt;b&gt;tag&lt;\/b&gt;/);
+});
+
+test('pickCoverPalette 与视觉锚点：按题材稳定配色，含数字主标题在横版生成数据主视觉卡', () => {
+  const alertPal = pickCoverPalette({ main: 'AI点网页 / **卡死在付款**', kicker: '避坑实测' });
+  assert.ok(['signal-coral', 'crimson-slate'].includes(alertPal.key));
+
+  const aiPal = pickCoverPalette({ main: '大模型记忆 / 为啥越聊越笨', kicker: 'AI拆解' });
+  assert.ok(['electric-gold', 'violet-pulse'].includes(aiPal.key));
+
+  const mathPal = pickCoverPalette({ main: '黎曼猜想 / **3步**看懂证明思路', kicker: '硬核原理' });
+  assert.equal(mathPal.key, 'cyber-mint');
+
+  const metricHtml = buildHtml({
+    ratio: '16x9',
+    main: '7万星工具 / 陷**隐私争议**',
+    sub: '读登录文件 · 默认遥测',
+    kicker: '事实核查',
+  });
+  assert.match(metricHtml, /class="focal-card"/);
+  assert.match(metricHtml, /class="focal-metric"[^>]*>7万星</);
+  assert.match(metricHtml, /class="safe-bottom"/);
+
+  const portraitMetricHtml = buildHtml({
+    ratio: '3x4',
+    main: '7万星工具 / 陷**隐私争议**',
+    kicker: '事实核查',
+  });
+  assert.doesNotMatch(portraitMetricHtml, /class="focal-card"/, '竖版不堆叠右侧数据卡，保持文字居中醒目');
 });

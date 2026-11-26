@@ -152,7 +152,8 @@ details.pub-jsonbox summary:hover{color:var(--ink)}
       </select></label>
       <p id="pubScheduleScopeHint" class="pub-hint"></p>
       <label class="pub-field"><span>自动发布兜底分区</span><select id="pubSchedulePartition" disabled></select></label>
-      <p class="pub-hint" id="pubSchedulePartitionHint">优先用各作品已保存分区或 AI 自动推荐分区；无法识别时兜底使用此分区。</p>
+      <label class="pub-promotion-toggle" style="margin:6px 0 6px"><input type="checkbox" id="pubScheduleAutoPartition" checked> 投递前自动用 AI 推荐分区</label>
+      <p class="pub-hint" id="pubSchedulePartitionHint">投递前会先按视频内容由 AI 推荐分区；无法识别或失败时兜底使用此分区。</p>
       <div id="pubScheduleDaily">
         <div id="pubScheduleTimes" class="pub-time-list"></div>
         <button id="pubScheduleAdd" type="button" class="pub-btn">＋ 添加每日时点</button>

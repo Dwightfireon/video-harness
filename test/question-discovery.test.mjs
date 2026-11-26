@@ -395,7 +395,8 @@ test('automatic enqueue rechecks latest config/feedback after investigation and 
 test('research caps stop repeated URL / excess searches, interrupt the session and preserve the question', { timeout: 15000 }, async t => {
   for (const mode of ['repeat', 'searches']) {
     const events = researchEvents();
-    const scripted = mode === 'repeat' ? [...events.slice(0, -1), events.find(event => event.part?.tool === 'webfetch'), events.at(-1)]
+    const firstFetch = events.find(event => event.part?.tool === 'webfetch');
+    const scripted = mode === 'repeat' ? [...events.slice(0, -1), firstFetch, firstFetch, events.at(-1)]
       : [...Array.from({ length: 7 }, (_, i) => ({ type: 'tool_use', part: { tool: 'websearch', state: { status: 'completed', input: { query: 'distinct-' + i }, output: 'result' } } })), events.at(-1)];
     const { root } = fixture(t, { research: scripted }); seed(root);
     const before = readSchedule(root).discoveryTopics;
@@ -406,6 +407,90 @@ test('research caps stop repeated URL / excess searches, interrupt the session a
     assert.deepEqual(readSchedule(root).discoveryTopics, before);
     assert.match(fs.readFileSync(path.join(root, 'interrupts'), 'utf8'), /interrupt/);
   }
+});
+
+test('同一地址偶发重复读取一次（共 2 次）不会中断调查，仍可正常入档', { timeout: 15000 }, async t => {
+  const events = researchEvents();
+  const firstFetch = events.find(event => event.part?.tool === 'webfetch');
+  const scripted = [...events.slice(0, -1), firstFetch, events.at(-1)];
+  const { root } = fixture(t, { research: scripted }); seed(root);
+  const result = await discoverTopics(root, { operation: 'research', topicId: 'q', timeoutMs: 5000 });
+  assert.equal(result.ok, true, result.reason);
+  assert.equal(result.updated.canEnqueue, true);
+});
+
+test('preferExistingCandidates 优先按先入先出消化旧候选并入队，全部清空后才生成新选题', { timeout: 15000 }, async t => {
+  const { root, calls } = fixture(t);
+  seed(root, [
+    question('较新的旧候选', { id: 'q-new', status: 'candidate', at: 200, query: '离线翻译', researchAssessment: { version: 1, status: 'unresearched', finding: '', gaps: [], suggestedQuestion: '' } }),
+    question('最早的旧候选', { id: 'q-old', status: 'candidate', at: 100, query: '离线翻译', researchAssessment: { version: 1, status: 'unresearched', finding: '', gaps: [], suggestedQuestion: '' } }),
+    question('已判材料不足的旧候选', { id: 'q-insuff', status: 'candidate', at: 50, query: '离线翻译', researchAssessment: assessment('insufficient') }),
+  ], { discoveryConfig: { enabled: true, autoQueue: true, count: 1, timeoutMs: 5000 } });
+
+  // 第一轮：优先消化最早的旧候选 q-old，不调用 questions 生成新题
+  const r1 = await discoverTopics(root, { origin: 'automatic', autoQueue: true, count: 1, preferExistingCandidates: true });
+  assert.equal(r1.ok, true, r1.reason);
+  assert.equal(r1.reusedExisting, true);
+  assert.equal(r1.added.length, 1);
+  assert.equal(r1.added[0].topic, '最早的旧候选');
+  assert.deepEqual(calls().map(c => c.operation), ['research']);
+
+  // 第二轮：继续消化剩下的 q-new，仍不生成新题
+  const r2 = await discoverTopics(root, { origin: 'automatic', autoQueue: true, count: 1, preferExistingCandidates: true });
+  assert.equal(r2.ok, true, r2.reason);
+  assert.equal(r2.reusedExisting, true);
+  assert.equal(r2.added.length, 1);
+  assert.equal(r2.added[0].topic, '较新的旧候选');
+  assert.deepEqual(calls().map(c => c.operation), ['research', 'research']);
+
+  // 第三轮：只剩 insufficient 的旧候选（不再重复调查），此时才生成新选题并调查入队
+  const r3 = await discoverTopics(root, { origin: 'automatic', autoQueue: true, count: 1, preferExistingCandidates: true });
+  assert.equal(r3.ok, true, r3.reason);
+  assert.equal(Boolean(r3.reusedExisting), false);
+  assert.equal(r3.added.length, 1);
+  assert.deepEqual(calls().map(c => c.operation), ['research', 'research', 'questions', 'research']);
+});
+
+test('preferExistingCandidates 旧候选因 403/读不到原文全部未入队时，自动跳过并顺延生成新选题补位', { timeout: 15000 }, async t => {
+  const blockedEvents = [
+    { type: 'tool_use', part: { tool: 'websearch', state: { status: 'completed', input: { query: 'q1' }, output: 's1' } } },
+    { type: 'tool_use', part: { tool: 'websearch', state: { status: 'completed', input: { query: 'q2' }, output: 's2' } } },
+    ...Array.from({ length: 8 }, (_, i) => ({
+      type: 'tool_use',
+      part: { tool: 'webfetch', state: { status: 'error', input: { url: `https://paywall-${i}.example.com/article` }, error: 'HTTP 403 Access Denied' } },
+    })),
+  ];
+  const { root, set, calls } = fixture(t);
+  // 首次 research（旧候选）触发 8 次 403 失败；随后 questions 生成新题，第二次 research 正常返回有效原文
+  const bin = path.join(root, 'fake-opencode');
+  fs.writeFileSync(bin, `#!${process.execPath}
+const fs = require('node:fs');
+if (process.argv[2] === 'api') { console.log(JSON.stringify({interrupted:true})); process.exit(0); }
+const prompt = process.argv.at(-1), operation = prompt.includes('本轮唯一任务是调查现有问题') ? 'research' : 'questions';
+const countFile = 'research-count.txt';
+let rCount = 0;
+if (operation === 'research') {
+  rCount = Number(fs.existsSync(countFile) ? fs.readFileSync(countFile, 'utf8') : '0') + 1;
+  fs.writeFileSync(countFile, String(rCount));
+}
+fs.appendFileSync('calls.jsonl', JSON.stringify({ operation, rCount, prompt }) + '\\n');
+console.log(JSON.stringify({ type:'step_start', sessionID:'ses_fallback' }));
+const spec = JSON.parse(fs.readFileSync('response.json', 'utf8'));
+const events = operation === 'questions' ? spec.questions : (rCount === 1 ? spec.blockedResearch : spec.research);
+for (const event of events) console.log(JSON.stringify(event));
+`, { mode: 0o755 });
+  set({ blockedResearch: blockedEvents });
+  seed(root, [
+    question('容易 403 的旧候选', { id: 'q-bad', status: 'candidate', at: 100, query: '离线翻译', researchAssessment: { version: 1, status: 'unresearched', finding: '', gaps: [], suggestedQuestion: '' } }),
+  ], { discoveryConfig: { enabled: true, autoQueue: true, count: 1, timeoutMs: 10000 } });
+
+  const result = await discoverTopics(root, { origin: 'automatic', autoQueue: true, count: 1, preferExistingCandidates: true });
+  assert.equal(result.ok, true, result.reason);
+  assert.equal(result.added.length, 1, '旧候选失败后应自动顺延生成新题并成功入队');
+  assert.deepEqual(calls().map(c => c.operation), ['research', 'questions', 'research']);
+  const savedBad = readSchedule(root).discoveryTopics.find(item => item.id === 'q-bad');
+  assert.ok((savedBad.autoResearchAttempts || 0) >= 2, '连续 403 的旧候选应被直接标记为已跳过上限');
+  assert.match(calls()[2].prompt, /paywall-0\.example\.com/, '后续调查提示词应自动带上近期 403 拦截域名');
 });
 
 test('403/失败的 webfetch 不会提前耗尽 8 篇有效阅读配额，拿到有效原文仍可正常入档', { timeout: 15000 }, async t => {
