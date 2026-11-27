@@ -54,3 +54,6 @@ dbg-tmp.mjs
 *.srt
 *.ass
 *.vtt
+
+# vh trash (deleted projects)
+.vh-trash/

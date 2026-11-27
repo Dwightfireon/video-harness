@@ -378,6 +378,13 @@ async function cmdNew() {
     die('画面模式只能选择 --visual hybrid-sdf 或 --visual dom');
   }
   if (existingProject && has('visual')) die('--visual 只用于新项目，不改已有工程');
+  const { CONTENT_PROFILES, CONTENT_PROFILE_LABELS } = await import('./lib/content-profile.mjs');
+  const { configureContentProfile } = await import('./lib/project-profile.mjs');
+  const contentProfile = getArg('content-profile', 'auto');
+  if (!CONTENT_PROFILES.includes(contentProfile) || (has('content-profile') && args[args.indexOf('--content-profile') + 1] !== contentProfile)) {
+    die('内容定位只能选择 --content-profile auto|intel|science|opinion');
+  }
+  if (existingProject && has('content-profile')) die('--content-profile 在 new 中只用于新项目，不改已有工程');
   const sv = SKILL_SCRIPTS ? path.join(SKILL_SCRIPTS, 'new-video.mjs') : null;
   if (!sv || !fs.existsSync(sv)) die('需要 skill 目录（--skill <path>），且其中 scripts/new-video.mjs 存在');
   await runStep('脚手架（skill new-video）', process.execPath,
@@ -423,6 +430,10 @@ async function cmdNew() {
   if (!existingProject) {
     initializeVisualMode(dir, visual);
     say(visual === SDF_MODE ? '✓ 画面：按场混合，兼容普通场景；只有选用 SDF 的场才启动 WebGL2' : '✓ 画面：纯 DOM / SVG');
+    if (contentProfile !== 'auto') {
+      configureContentProfile(dir, contentProfile);
+      say(`✓ 内容定位：${contentProfile}（${CONTENT_PROFILE_LABELS[contentProfile]}）`);
+    }
   }
   selectVideoFormat(dir, aspectRatio);
   // 新工程默认交给 opencode：它带 websearch，选题类任务才有真实调研能力。
@@ -1908,14 +1919,19 @@ async function cmdScriptPacing() {
 async function cmdScriptReview() {
   const project = resolveProject(getArg('dir', ''));
   const { runScriptReview, formatReviewMarkdown, resolveReviewModel } = await import('./lib/script-review.mjs');
+  const { CONTENT_PROFILES } = await import('./lib/content-profile.mjs');
   const explicit = getArg('model', '');
+  const contentProfile = getArg('content-profile', '');
+  if (contentProfile && !CONTENT_PROFILES.includes(contentProfile)) {
+    die('内容定位只能选择 --content-profile auto|intel|science|opinion');
+  }
   if (!has('json')) {
     try {
       const picked = resolveReviewModel({ explicit });
       say(`→ 正在以干净上下文独立校对脚本（模型 ${picked.model}，约 15–60 秒）…`);
     } catch {}
   }
-  const res = await runScriptReview(project, { model: explicit });
+  const res = await runScriptReview(project, { model: explicit, contentProfile });
   if (has('json')) console.log(JSON.stringify(res, null, 2));
   else {
     console.log(formatReviewMarkdown(res));
@@ -2614,7 +2630,7 @@ async function cmdAsk() {
   if (has('resume') && has('new')) die('--resume 与 --new 不能同时使用');
   const messageArgs = [];
   for (let i = 1; i < args.length; i++) {
-    if (['--mode', '--dir', '--task-id', '--attempt-id', '--input-file'].includes(args[i])) { i++; continue; }
+    if (['--mode', '--dir', '--task-id', '--attempt-id', '--input-file', '--content-profile'].includes(args[i])) { i++; continue; }
     if (['--bg', '--resume', '--new', '--unattended'].includes(args[i])) continue;
     if (args[i] === '--') { messageArgs.push(...args.slice(i + 1)); break; }
     messageArgs.push(args[i]);
@@ -2678,9 +2694,18 @@ async function cmdAsk() {
   updateTask(project, job.id, { execution: runner.execution || { runner: runner.name, model: runner.model || null } }, attemptId);
   const vh = path.join(HERE, 'vh.mjs');
   const { composeTask } = await import('./lib/task-prompts.mjs');
+  const { CONTENT_PROFILES } = await import('./lib/content-profile.mjs');
+  const { resolveProjectContentProfile } = await import('./lib/project-profile.mjs');
+  const explicitProfile = getArg('content-profile', '');
+  if (explicitProfile && !CONTENT_PROFILES.includes(explicitProfile)) {
+    die('内容定位只能选择 --content-profile auto|intel|science|opinion');
+  }
+  const resolvedProfile = resolveProjectContentProfile(project, { explicit: explicitProfile, message: raw });
   const task = composeTask({
     project, repo: HERE, mode, message: raw,
     policyNote: workflowPrompt(project),
+    contentProfile: resolvedProfile.profile,
+    checkedAt: resolvedProfile.checkedAt,
   });
   const logPath = path.join(project, 'out', '.vh-chat.log');
   const runPath = path.join(project, 'out', '.vh-run.json');

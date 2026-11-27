@@ -108,5 +108,29 @@ test('runScriptReview 写入 JSON 与 审查-文稿.md，并携带本地体检�
   assert.equal(fs.existsSync(path.join(dir, 'out/.vh-script-review.json')), true);
   const md = fs.readFileSync(path.join(dir, '审查-文稿.md'), 'utf8');
   assert.match(md, /通过（可进入分镜）/);
+  assert.match(md, /内容定位：science/);
   assert.match(md, /opencode-go\/hy4-flash-free/);
+});
+
+test('buildReviewPrompt 按 intel / science / opinion 三档切换审校标尺', () => {
+  const baseScript = '## S1 · 开场\n1. 我们先看一个具体抉择。\n← 依赖：无\n';
+  const opinionPrompt = buildReviewPrompt({
+    script: baseScript,
+    contentProfile: 'opinion',
+    clarity: { fail: [], warn: [], pending: [] },
+    pacing: { findings: [] },
+  });
+  assert.match(opinionPrompt, /本片审校标尺：opinion/);
+  assert.match(opinionPrompt, /严禁用实证论文或随机对照实验模板苛求观点片/);
+
+  const intelPrompt = buildReviewPrompt({
+    script: baseScript,
+    contentProfile: 'intel',
+    checkedAt: Date.parse('2026-11-27T00:00:00Z'),
+    clarity: { fail: [], warn: [], pending: [] },
+    pacing: { findings: [] },
+  });
+  assert.match(intelPrompt, /本片审校标尺：intel/);
+  assert.match(intelPrompt, /2026-11-27/);
+  assert.match(intelPrompt, /官方宣传口径冒充独立第三方实测/);
 });

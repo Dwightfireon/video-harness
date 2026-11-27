@@ -212,6 +212,14 @@ main{padding:14px 28px 60px;display:grid;grid-template-columns:repeat(auto-fill,
     <details class="composer-details composer-settings" id="composerSettings"><summary>创作设置</summary><div class="composer-settings-body">
     <button class="btn" id="advBtn" type="button" aria-expanded="false" aria-controls="newName">指定项目名</button>
     <input type="text" id="newName" class="hidden" aria-label="项目名" placeholder="留空自动命名">
+    <label class="draft-control" for="newContentProfile">内容定位（默认全自动，一般无需修改）
+      <select id="newContentProfile">
+        <option value="auto" selected>自动判断</option>
+        <option value="intel">强制：前沿情报（重时效）</option>
+        <option value="science">强制：科学科普（重机制）</option>
+        <option value="opinion">强制：观点思辨（重立场）</option>
+      </select>
+    </label>
     <label class="draft-control" title="草稿仅存在此浏览器，请勿保存敏感内容"><input id="saveNewDraft" type="checkbox">在此浏览器保存草稿</label>
     <p class="format-hint">草稿仅保存在当前浏览器，请勿保存敏感内容。</p>
     <div id="newDraftStatus" class="format-hint" role="status"></div>
@@ -634,14 +642,16 @@ let newDraft = null;
 const newInput = attachPagedInput($('#newInput'), { pagerHost: $('#pagerHost'), onChange: () => newDraft?.schedule() });
 newDraft = attachDraft({ key: 'vh:draft:new:v1', input: newInput, checkbox: $('#saveNewDraft'), status: $('#newDraftStatus'),
   getMeta: () => ({ mode: document.querySelector('input[name=src]:checked').value, name: $('#newName').value,
-    aspectRatio: $('#newAspectRatio').value, deliveryTarget: $('#newDeliveryTarget').value }),
+    aspectRatio: $('#newAspectRatio').value, deliveryTarget: $('#newDeliveryTarget').value,
+    contentProfile: $('#newContentProfile').value }),
   restoreMeta: meta => {
     if (['article', 'topic'].includes(meta.mode)) document.querySelector(`input[name=src][value="${meta.mode}"]`).checked = true;
     if (typeof meta.name === 'string') $('#newName').value = meta.name;
     if (['16:9', '9:16'].includes(meta.aspectRatio)) $('#newAspectRatio').value = meta.aspectRatio;
     if (['video', 'publish-package'].includes(meta.deliveryTarget)) $('#newDeliveryTarget').value = meta.deliveryTarget;
+    if (['auto', 'intel', 'science', 'opinion'].includes(meta.contentProfile)) $('#newContentProfile').value = meta.contentProfile;
   } });
-for (const control of document.querySelectorAll('input[name=src],#newName,#newAspectRatio,#newDeliveryTarget')) control.addEventListener('input', () => newDraft.schedule());
+for (const control of document.querySelectorAll('input[name=src],#newName,#newAspectRatio,#newDeliveryTarget,#newContentProfile')) control.addEventListener('input', () => newDraft.schedule());
 function paintInputHint() {
   $('#newInput').placeholder = document.querySelector('input[name=src]:checked').value === 'topic'
     ? '你想讲什么？例如：本地大模型为什么越来越实用了。'
@@ -654,6 +664,7 @@ $('#newBtn').onclick = async () => {
   const input = newInput.getValue();
   const aspectRatio = $('#newAspectRatio').value;
   const deliveryTarget = $('#newDeliveryTarget').value;
+  const contentProfile = $('#newContentProfile').value;
   const name = $('#newName').value.trim() || autoName(input, mode);
   if (!input.trim() && !confirm('没填材料也可以先建空项目（之后可以再补）。要继续吗？')) return;
   const msg = $('#newMsg');
@@ -662,7 +673,7 @@ $('#newBtn').onclick = async () => {
   $('#newQueueBtn').disabled = true;
   try {
     const r = await requestJSON('/_api/new', { method: 'POST', timeoutMs: 60000, headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name, mode, input, aspectRatio, deliveryTarget }) });
+      body: JSON.stringify({ name, mode, input, aspectRatio, deliveryTarget, contentProfile }) });
     if (!r.ok || typeof r.rel !== 'string') throw new Error('服务器没有确认项目创建成功；请先查看项目列表');
     if (r.error) { msg.className = 'err'; msg.textContent = r.error; }
     else {
@@ -671,7 +682,7 @@ $('#newBtn').onclick = async () => {
         : r.needsInput ? '项目已创建，尚未提供制作材料。请进入工作台补充。' : (r.task?.error?.message || '项目已保存，任务尚未启动。');
       const link = document.createElement('a'); link.href = '/?p=' + encodeURIComponent(r.rel) + '&tab=chat';
       link.className = 'btn'; link.textContent = '查看这次任务'; msg.append(document.createElement('br'), link);
-      if (newInput.getValue() === input && $('#newDeliveryTarget').value === deliveryTarget && $('#newAspectRatio').value === aspectRatio && document.querySelector('input[name=src]:checked').value === mode) {
+      if (newInput.getValue() === input && $('#newDeliveryTarget').value === deliveryTarget && $('#newAspectRatio').value === aspectRatio && $('#newContentProfile').value === contentProfile && document.querySelector('input[name=src]:checked').value === mode) {
         newInput.setValue(''); newDraft.clear();
       }
       if ($('#newName').value.trim() === name) $('#newName').value = '';
@@ -682,16 +693,17 @@ $('#newBtn').onclick = async () => {
 };
 $('#newQueueBtn').onclick = async () => {
   const msg = $('#newMsg'), input = newInput.getValue(), mode = document.querySelector('input[name=src]:checked').value;
-  const aspectRatio = $('#newAspectRatio').value, deliveryTarget = $('#newDeliveryTarget').value;
+  const aspectRatio = $('#newAspectRatio').value, deliveryTarget = $('#newDeliveryTarget').value, contentProfile = $('#newContentProfile').value;
   const projectName = $('#newName').value.trim(), name = projectName || autoName(input, mode);
   if (!input.trim() || !name) { msg.className = 'err'; msg.textContent = '请先填写文章、链接或选题。'; return; }
   $('#newBtn').disabled = $('#newQueueBtn').disabled = true;
   msg.className = ''; msg.textContent = '正在加入队列…';
   try {
     const result = await requestJSON('/_api/schedule/enqueue', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name, mode, input, aspectRatio, deliveryTarget }) });
+      body: JSON.stringify({ name, mode, input, aspectRatio, deliveryTarget, contentProfile }) });
     if (!result.ok || !result.id) throw new Error('服务没有确认入队；若刚更新，请在空闲时重启工作台');
     if (newInput.getValue() === input && $('#newDeliveryTarget').value === deliveryTarget && $('#newAspectRatio').value === aspectRatio &&
+        $('#newContentProfile').value === contentProfile &&
         document.querySelector('input[name=src]:checked').value === mode && $('#newName').value.trim() === projectName) {
       newInput.setValue(''); newDraft.clear(); $('#newName').value = '';
     }

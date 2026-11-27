@@ -342,7 +342,8 @@ export function attachDiscoveryPanel(root, {
     record.heading.textContent = item.topic || item.coreQuestion || '选题';
     record.summary.textContent = question ? question.value || item.why || '' : research?.selectionReason || item.why || '';
     record.audience.textContent = question?.audience ? '对谁有用：' + question.audience : ''; record.audience.hidden = !question?.audience;
-    const sourceMeta = mainSource ? [research.kind === 'news' ? '新闻进展' : '研究材料', new URL(mainSource.url).hostname,
+    const kindText = research?.kind === 'news' ? '新闻进展' : research?.kind === 'opinion' ? '观点思辨' : '研究材料';
+    const sourceMeta = mainSource ? [kindText, new URL(mainSource.url).hostname,
       sourceDate ? `${research.kind === 'news' ? '事件' : '发表'} ${sourceDate}` : '发表日期未确认'].join(' · ') : '';
     const needsEvidence = Boolean(question && !inQueue(item) && item.canEnqueue !== true);
     if (question) {

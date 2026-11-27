@@ -281,3 +281,57 @@ test('按学科分层的权威依据标准校验：自然科学付费墙组合�
   assert.equal(deadResult.ok, false);
   assert.match(deadResult.reason, /有效片段/);
 });
+
+test('全领域新闻默认启用 90 天时效护栏；非技术选题归入 general/opinion，不再误套 AI 论文标准', () => {
+  // 1. 非 AI 领域的旧新闻（超过 90 天且无显式放宽窗口）同样被拦下
+  const oldBizUrl = 'https://www.reuters.com/business/retail-shift-2026';
+  const oldBizQuote = 'On June 1, 2026, the retail chain announced a nationwide store restructuring plan across twelve cities.';
+  const oldBizBody = `# Retail Restructuring\nPublished: June 2, 2026\n${oldBizQuote}`;
+  const oldBizResearch = collectDiscoveryResearch([...searches(), tool('webfetch', { url: oldBizUrl }, oldBizBody)]);
+  const oldBizItem = candidate({
+    kind: 'news',
+    topic: '连锁零售品牌门店重组调整为什么集中在二线城市',
+    subject: '连锁零售品牌',
+    coreQuestion: '本轮门店调整涉及哪些区域与成本结构变化',
+    sources: [oldBizUrl],
+    evidence: [evidence({
+      url: oldBizUrl,
+      sourceType: 'reporting',
+      quote: oldBizQuote,
+      publishedAt: '2026-06-02',
+      publicationQuote: 'Published: June 2, 2026',
+      eventDate: '2026-06-01',
+      eventQuote: oldBizQuote,
+    })],
+  });
+  const oldBizResult = assessDiscoveryCandidate(oldBizItem, { sources: oldBizItem.sources, research: oldBizResearch, now });
+  assert.equal(oldBizResult.ok, false);
+  assert.match(oldBizResult.reason, /近 90 天默认时效窗口/);
+
+  // 2. 观点思辨类（kind: 'opinion'）不因早于 18 个月或无实证论文被拒，且学科不再误判为 tech
+  const opinionUrl = 'https://aeon.co/essays/why-modern-workplaces-overvalue-busyness';
+  const opinionQuote = 'Visible busyness has become a proxy for commitment whenever creative output is difficult to measure directly.';
+  const opinionBody = `# Overvaluing Busyness\nPublished: March 10, 2024\n${opinionQuote}`;
+  const opinionResearch = collectDiscoveryResearch([...searches(), tool('webfetch', { url: opinionUrl }, opinionBody)]);
+  const opinionItem = candidate({
+    kind: 'opinion',
+    topic: '为什么我不再建议用忙碌程度衡量创作型工作的投入？职场取舍漫谈',
+    subject: '创作型工作评价',
+    coreQuestion: '当产出难以量化时用忙碌度替代评价会带来怎样的扭曲',
+    sources: [opinionUrl],
+    evidence: [evidence({
+      url: opinionUrl,
+      sourceType: 'analysis',
+      quote: opinionQuote,
+      publishedAt: '2024-03-10',
+      publicationQuote: 'Published: March 10, 2024',
+      eventDate: null,
+      eventQuote: '',
+    })],
+  });
+  const opinionResult = assessDiscoveryCandidate(opinionItem, { sources: opinionItem.sources, research: opinionResearch, now });
+  assert.equal(opinionResult.ok, true);
+  assert.equal(opinionResult.discipline, 'opinion');
+  assert.equal(opinionResult.research.kind, 'opinion');
+  assert.ok(opinionResult.research.caveats.some(c => /观点与思辨类依据/.test(c)));
+});
