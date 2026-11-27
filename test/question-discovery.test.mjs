@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { discoverTopics, discoveryPrompt, researchPrompt, DISCOVERY_CAPS } from '../lib/discovery.mjs';
+import { discoverTopics, discoveryPrompt, researchPrompt, DISCOVERY_CAPS, duplicateOf } from '../lib/discovery.mjs';
 import { discoveryPrompt as pureDiscoveryPrompt, researchPrompt as pureResearchPrompt, DISCOVERY_CAPS as pureCaps } from '../lib/discovery-prompts.mjs';
 import { readSchedule, writeSchedule, topicDetails, topicBrief } from '../lib/schedule.mjs';
 import { topicState, updateTopicState } from '../lib/topic-memory.mjs';
@@ -592,4 +592,43 @@ test('discovery and investigation follow provider-settings model unless explicit
   assert.equal(broken.ok, false);
   assert.match(broken.reason, /providers\.json|不会自动换渠道/);
   assert.equal(calls().length, countBefore, '配置损坏时不得静默回落到其他渠道或启动执行器');
+});
+
+test('长历史去重：提示词保留更早标题并优先当前方向，本地兜底识别同对象近义问法且不误杀不同子问题', () => {
+  const history = Array.from({ length: 85 }, (_, i) => ({
+    id: `h-${i + 1}`,
+    topic: i === 2 ? 'AI 筛简历对非名校是不是先天吃亏' : `历史选题 ${i + 1}`,
+    subject: i === 2 ? 'AI 筛简历' : `对象 ${i + 1}`,
+    coreQuestion: `核心问题 ${i + 1}`,
+    status: i === 5 ? 'duplicate' : 'queued',
+  }));
+  const prompt = discoveryPrompt({ query: 'AI 筛简历、算法公平', history });
+  assert.match(prompt, /更早历史已出标题/);
+  assert.match(prompt, /AI 筛简历对非名校是不是先天吃亏/, '超过 60 条的早期历史标题仍应进入语义去重上下文');
+  assert.doesNotMatch(prompt, /历史选题 6"/, '已标记 duplicate 的记录不应污染更早标题列表');
+  assert.ok(prompt.indexOf('AI 筛简历对非名校是不是先天吃亏') < prompt.indexOf('历史选题 40'), '与当前检索方向匹配的早期标题应排在前面');
+
+  const known = [{
+    id: 'old-1',
+    topic: 'AI 筛简历对非名校和女性是不是先天吃亏',
+    subject: 'AI 筛简历',
+    coreQuestion: 'AI 简历筛选对非名校和女性求职者是不是先天吃亏？',
+  }];
+  assert.ok(
+    duplicateOf({
+      topic: '招聘算法会压低非名校简历吗',
+      subject: 'AI 筛简历',
+      coreQuestion: 'AI 简历筛选对非名校和女性求职者是不是真的先天吃亏',
+    }, known),
+    '同 subject 下高度相近的 coreQuestion 应判重复',
+  );
+  assert.equal(
+    duplicateOf({
+      topic: '企业部署 AI 筛简历到底能省多少招聘成本',
+      subject: 'AI 筛简历',
+      coreQuestion: '大公司引入自动初筛后人力成本和误杀率如何权衡？',
+    }, known),
+    undefined,
+    '同 subject 下讨论完全不同机制的问题不应误判为重复',
+  );
 });

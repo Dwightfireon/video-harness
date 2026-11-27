@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readSchedule, writeSchedule, addTopic, attachProject, removeItem, removeItems, firstUnstarted,
-  deriveStatus, listWithStatus, dispatchedToday, slugify } from '../lib/schedule.mjs';
+  deriveStatus, listWithStatus, dispatchedToday, slugify, retireDelivered } from '../lib/schedule.mjs';
 import { shouldBuild, shouldPublish, setPlans, describePlans, parseClock, withinWindow } from '../lib/timing-plan.mjs';
 
 /* 队列只记「想做哪些」，执行状态从项目推导、不存副本。
@@ -233,4 +233,23 @@ test('项目名可直接当目录名', () => {
   assert.equal(slugify('本地大模型为什么突然好用了'), '本地大模型为什么突然好用了');
   assert.equal(slugify('https://x.test/a 带链接 --mode 参数'), '带链接---mode-参数');
   assert.equal(slugify('   '), 'auto');
+});
+
+test('成片交付后自动移出待做队列：保留选题记忆，派发计数不丢', t => {
+  const root = tmp(t);
+  const a = addTopic(root, '已交付'), b = addTopic(root, '还在做'), c = addTopic(root, '未开工');
+  attachProject(root, a.id, 'projects/a');
+  attachProject(root, b.id, 'projects/b');
+  const before = dispatchedToday(readSchedule(root));
+  const done = { 'projects/a': true };
+  const result = retireDelivered(root, item => done[item.project] === true);
+  assert.deepEqual(result.ids, [a.id]);
+  const queue = readSchedule(root);
+  assert.deepEqual(queue.items.map(item => item.id), [b.id, c.id], '未交付和未开工的项保留');
+  const memory = queue.discoveryTopics.find(entry => entry.queueId === a.id);
+  assert.ok(memory?.dispatchedAt, '移出后选题历史里留有派发时间');
+  assert.equal(dispatchedToday(queue), before, '每日派发上限仍计入已移出的项');
+  assert.equal(retireDelivered(root, () => true).removed, 1, '只移出已开工项，未开工的不动');
+  assert.equal(readSchedule(root).items[0].id, c.id);
+  assert.equal(retireDelivered(root, () => { throw new Error('x'); }).removed, 0, '判断出错时不移除');
 });

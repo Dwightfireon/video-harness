@@ -6,6 +6,7 @@ import {
   isWeakEmphasis,
   formatCoverTitle,
   formatCoverSub,
+  darkenAccentForPaper,
   liftAccentForDark,
   pickCoverPalette,
   buildHtml,
@@ -81,11 +82,26 @@ test('formatCoverSub：中点分隔短词渲染为标签胶囊，完整句子渲
   assert.match(line.html, /class="sub sub-line"/);
 });
 
-test('liftAccentForDark：偏暗主题强调色在深色海报底上自动提亮，亮色保持原样', () => {
+test('darkenAccentForPaper 与 liftAccentForDark：纸底压深亮色、深底提亮暗色', () => {
+  const darkened = darkenAccentForPaper('#7BE3A4');
+  assert.notEqual(darkened, '#7BE3A4');
+  assert.match(darkened, /^#[0-9A-F]{6}$/);
+  assert.equal(darkenAccentForPaper('#147A3A'), '#147A3A');
+
   const lifted = liftAccentForDark('#147A3A');
   assert.notEqual(lifted, '#147A3A');
   assert.match(lifted, /^#[0-9A-F]{6}$/);
   assert.equal(liftAccentForDark('#7BE3A4'), '#7BE3A4');
+});
+
+test('formatCoverTitle：单行含中文停顿标点的长标题自动择中拆成两行，避免断词尴尬', () => {
+  const res = formatCoverTitle('软件越更越胖？**真变重了**');
+  assert.equal(res.plain, '软件越更越胖？\n真变重了');
+  assert.match(res.html, /<span class="line line-setup">软件越更越胖？<\/span><span class="line line-hero"><em class="hl">真变重了<\/em><\/span>/);
+
+  const shortSingle = formatCoverTitle('证明变短了');
+  assert.equal(shortSingle.plain, '证明变短了');
+  assert.match(shortSingle.html, /<span class="line line-hero">证明变短了<\/span>/);
 });
 
 test('buildHtml：editorial 遵守无 bg/品牌水印契约，无 em.hl 左缩进，且正确防 XSS 转义', () => {
@@ -122,30 +138,26 @@ test('buildHtml：editorial 遵守无 bg/品牌水印契约，无 em.hl 左缩�
   assert.match(safeHtml, /&lt;b&gt;tag&lt;\/b&gt;/);
 });
 
-test('pickCoverPalette 与视觉锚点：按题材稳定配色，含数字主标题在横版生成数据主视觉卡', () => {
+test('pickCoverPalette 与精装书封排版：全系暖书纸居中对称、粗宋体、无圆角UI卡片与冗余装饰图', () => {
   const alertPal = pickCoverPalette({ main: 'AI点网页 / **卡死在付款**', kicker: '避坑实测' });
-  assert.ok(['signal-coral', 'crimson-slate'].includes(alertPal.key));
+  assert.equal(alertPal.key, 'burgundy-paper');
+  assert.match(alertPal.bg1, /^#FA/);
 
   const aiPal = pickCoverPalette({ main: '大模型记忆 / 为啥越聊越笨', kicker: 'AI拆解' });
-  assert.ok(['electric-gold', 'violet-pulse'].includes(aiPal.key));
+  assert.equal(aiPal.key, 'prussian-paper');
 
   const mathPal = pickCoverPalette({ main: '黎曼猜想 / **3步**看懂证明思路', kicker: '硬核原理' });
-  assert.equal(mathPal.key, 'cyber-mint');
+  assert.equal(mathPal.key, 'cinnabar-paper');
 
-  const metricHtml = buildHtml({
+  const html = buildHtml({
     ratio: '16x9',
-    main: '7万星工具 / 陷**隐私争议**',
-    sub: '读登录文件 · 默认遥测',
-    kicker: '事实核查',
+    main: '**先存后解**，不是吓唬',
+    sub: '量子机还没来 · 密钥先换 · 硬件最难迁',
+    kicker: '原理拆解',
   });
-  assert.match(metricHtml, /class="focal-card"/);
-  assert.match(metricHtml, /class="focal-metric"[^>]*>7万星</);
-  assert.match(metricHtml, /class="safe-bottom"/);
-
-  const portraitMetricHtml = buildHtml({
-    ratio: '3x4',
-    main: '7万星工具 / 陷**隐私争议**',
-    kicker: '事实核查',
-  });
-  assert.doesNotMatch(portraitMetricHtml, /class="focal-card"/, '竖版不堆叠右侧数据卡，保持文字居中醒目');
+  assert.match(html, /Songti SC/);
+  assert.match(html, /class="book-frame"/);
+  assert.match(html, /text-align:center/);
+  assert.match(html, /class="sub-sep"/);
+  assert.doesNotMatch(html, /class="deco-art"|class="side-panel"|class="focal-card"/, '保持居中精装书封纯净构图');
 });

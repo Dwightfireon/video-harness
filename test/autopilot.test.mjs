@@ -541,3 +541,35 @@ test('发布排程 onSubmitted 联动巡航：收稿落盘后自动清掉 out/fr
   assert.equal(autopilot.snapshot().prunedCount, 1);
   assert.equal(autopilot.snapshot().prunedBytes, 4096 + 2048 + 1024);
 });
+
+test('全自动巡航：用户手动停止或删除当前项目时自动跳过并继续下一支，不触发熔断暂停', async t => {
+  const h = makeHarness(t, { maxConsecutiveFailures: 1 });
+  h.queue.items.push(
+    { id: 'q1', topic: '不合适的选题 1' },
+    { id: 'q2', topic: '被删除的选题 2' },
+    { id: 'q3', topic: '正常的选题 3' },
+  );
+  await h.autopilot.start({ buildGapMinutes: 0 });
+  assert.equal(h.started.length, 1);
+  assert.equal(h.autopilot.snapshot().currentTopic, '不合适的选题 1');
+
+  // 第 1 支被用户手动停止（cancelled）→ 跳过并自动启动第 2 支，不熔断
+  h.statuses.set('projects/p-1', { status: 'cancelled', delivered: false });
+  const afterCancel = await h.autopilot.tick();
+  assert.equal(afterCancel.active, true, '手动停止单支不应熔断巡航');
+  assert.equal(afterCancel.pausedReason, null);
+  assert.equal(afterCancel.skipped, 1);
+  assert.match(afterCancel.lastWarning, /已手动停止，已跳过并继续巡航下一支/);
+  assert.equal(h.started.length, 2);
+  assert.equal(afterCancel.currentTopic, '被删除的选题 2');
+
+  // 第 2 支被用户直接删除（missing）→ 同样跳过并自动启动第 3 支，不熔断
+  h.statuses.set('projects/p-2', { status: 'missing', delivered: false });
+  const afterDelete = await h.autopilot.tick();
+  assert.equal(afterDelete.active, true, '删除单支项目不应熔断巡航');
+  assert.equal(afterDelete.pausedReason, null);
+  assert.equal(afterDelete.skipped, 2);
+  assert.match(afterDelete.lastWarning, /已删除，已跳过并继续巡航下一支/);
+  assert.equal(h.started.length, 3);
+  assert.equal(afterDelete.currentTopic, '正常的选题 3');
+});
