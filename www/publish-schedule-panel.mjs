@@ -32,12 +32,14 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
     row.append(input, remove); $('pubScheduleTimes').append(row);
   }
   const autoPartitionEnabled = () => $('pubScheduleAutoPartition') ? $('pubScheduleAutoPartition').checked : true;
+  const autoPromotionEnabled = () => $('pubScheduleAutoPromotion') ? $('pubScheduleAutoPromotion').checked : false;
   function restoreForm(data) {
     $('pubScheduleTimes').replaceChildren(); data.times.forEach(addTime);
     $('pubScheduleScope').value = data.scope?.kind || 'selected';
     $('pubScheduleTrigger').value = data.trigger?.kind || 'daily';
     $('pubScheduleInterval').value = data.trigger?.intervalSeconds ?? 180;
     if ($('pubScheduleAutoPartition')) $('pubScheduleAutoPartition').checked = data.autoPartition !== false;
+    if ($('pubScheduleAutoPromotion')) $('pubScheduleAutoPromotion').checked = data.autoPromotion === true;
     partition = data.partition || null;
     paintPartitions();
     setSelection([...data.ids]);
@@ -52,6 +54,7 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
     select.value = key;
     select.disabled = !state || !protocolCompatible || (!partitionOptions.size && !key);
     if ($('pubScheduleAutoPartition')) $('pubScheduleAutoPartition').disabled = !state || !protocolCompatible;
+    if ($('pubScheduleAutoPromotion')) $('pubScheduleAutoPromotion').disabled = !state || !protocolCompatible;
     $('pubSchedulePartitionHint').textContent = partitionCatalog === 'loaded' && unavailable
       ? '已保存分区不在当前目录中；重新启用前请选择分区。'
       : partitionCatalog === 'failed' ? '未能读取分区目录；可点页眉的「刷新」重试。'
@@ -147,7 +150,8 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
     $('pubScheduleZone').textContent = `服务时区：${state.timezone}` +
       ` · 已保存范围：${state.scope?.kind === 'production-queue' ? '当前及今后制作队列' : '仅选定作品'}` +
       (state.partition ? ` · 兜底分区：${state.partition.label || state.partition.tid}` : ' · 未保存分区') +
-      (state.autoPartition !== false ? ' · 投递前 AI 自动选区' : ' · 固定兜底分区');
+      (state.autoPartition !== false ? ' · 投递前 AI 自动选区' : ' · 固定兜底分区') +
+      (state.autoPromotion ? ' · 默认声明含营销信息' : '');
     const ready = state.trigger?.kind === 'ready';
     $('pubScheduleCalendarWrap').hidden = ready;
     $('pubScheduleNext').textContent = (ready
@@ -217,13 +221,15 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
       const partitionSummary = autoPartitionEnabled()
         ? `投递前 AI 自动推荐分区（兜底：${partition.label || partition.tid}）`
         : `${partition.label || partition.tid}`;
-      if (!confirm(`确认启用自动发布？\n\n${cadence}\n分区：${partitionSummary}\n${authorization}\n\n投稿使用各项目保存的文案、商业声明与上述分区策略，不使用右侧尚未保存的修改。失败即暂停。`)) return;
+      const promotionSummary = autoPromotionEnabled() ? '\n声明：默认勾选「内容含营销信息」' : '';
+      if (!confirm(`确认启用自动发布？\n\n${cadence}\n分区：${partitionSummary}${promotionSummary}\n${authorization}\n\n投稿使用各项目保存的文案、商业声明与上述分区策略，不使用右侧尚未保存的修改。失败即暂停。`)) return;
     }
     const submittedVersion = editVersion, oldRevision = state.revision;
     const body = action === 'pause' ? { action, revision: state.revision }
       : { action, revision, ...(trigger.kind === 'daily' ? { times: selectedTimes } : {}),
           ...(readySupported ? { trigger } : {}), ids, scope: scope(), partition,
           ...($('pubScheduleAutoPartition') ? { autoPartition: autoPartitionEnabled() } : {}),
+          ...($('pubScheduleAutoPromotion') ? { autoPromotion: autoPromotionEnabled() } : {}),
           ...(action === 'enable' ? { confirmed: true } : {}) };
     saving = true; reading = false; requestVersion++; actionError = ''; paintState();
     try {
@@ -252,6 +258,7 @@ export function attachPublishSchedule({ request, getSelection, setSelection, get
     markDirty();
   };
   if ($('pubScheduleAutoPartition')) $('pubScheduleAutoPartition').onchange = () => { paintPartitions(); markDirty(); };
+  if ($('pubScheduleAutoPromotion')) $('pubScheduleAutoPromotion').onchange = markDirty;
   $('pubScheduleAdd').onclick = () => {
     if (times().length >= 24) { notice('每天最多设置 24 个时点。', 'bad'); return; }
     addTime('12:00'); markDirty();

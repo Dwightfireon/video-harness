@@ -112,18 +112,26 @@ test('全自动巡航：制作失败立即停止，绝不盲目继续下一支',
   assert.equal(h.started.length, 1);
 });
 
-test('全自动巡航：配置持久化保存，且默认参数符合用户约定', t => {
-  const h = makeHarness(t);
+test('全自动巡航：配置持久化保存，且默认参数符合用户约定', async t => {
+  let syncedArgs = null;
+  const h = makeHarness(t, {
+    syncPublishSchedule: async (...args) => { syncedArgs = args; return { synced: true }; },
+  });
   assert.equal(DEFAULT_AUTOPILOT_CONFIG.query, 'AI、LLM、Agent、机器学习');
   assert.equal(DEFAULT_AUTOPILOT_CONFIG.mode, 'focused');
   assert.equal(DEFAULT_AUTOPILOT_CONFIG.buildGapMinutes, 5);
   assert.equal(DEFAULT_AUTOPILOT_CONFIG.publishIntervalSeconds, 300);
+  assert.equal(DEFAULT_AUTOPILOT_CONFIG.autoPromotion, true);
 
-  const saved = h.autopilot.saveConfig({ query: 'LLM Agent', buildGapMinutes: 8, publishIntervalSeconds: 420 });
+  const saved = h.autopilot.saveConfig({ query: 'LLM Agent', buildGapMinutes: 8, publishIntervalSeconds: 420, autoPromotion: true });
   assert.equal(saved.config.query, 'LLM Agent');
   assert.equal(saved.config.buildGapMinutes, 8);
   assert.equal(saved.config.publishIntervalSeconds, 420);
+  assert.equal(saved.config.autoPromotion, true);
   assert.equal(fs.existsSync(path.join(h.root, 'out', '.autopilot.json')), true);
+
+  await h.autopilot.syncPublish();
+  assert.deepEqual(syncedArgs, [420, true, true]);
 });
 
 test('全自动巡航：自动调查失败未入队时透出具体失败原因与建议，不笼统吞错', async t => {

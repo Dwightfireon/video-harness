@@ -38,11 +38,14 @@ test('每日时点严格校验、去重排序；队列允许空，但拒绝路�
 test('未启用与空队列没有任何投稿或素材读取，默认读取也不创建目录', async t => {
   const f = fixture(t);
   assert.equal(f.scheduler.view().autoPartition, true);
+  assert.equal(f.scheduler.view().autoPromotion, false);
   assert.equal((await f.scheduler.tick()).reason, 'not-due');
   assert.equal(fs.existsSync(path.join(f.root, 'out')), false);
-  f.enable({ ids: [], autoPartition: false }); f.time(date(10, 20));
+  f.enable({ ids: [], autoPartition: false, autoPromotion: true }); f.time(date(10, 20));
   assert.equal(f.scheduler.view().autoPartition, false);
+  assert.equal(f.scheduler.view().autoPromotion, true);
   assert.equal(createPublishScheduler(f.deps).view().autoPartition, false);
+  assert.equal(createPublishScheduler(f.deps).view().autoPromotion, true);
   assert.equal((await f.scheduler.tick()).reason, 'empty');
   assert.deepEqual(f.calls, []); assert.deepEqual(f.candidates, []);
   assert.equal(f.scheduler.view().lastAttempt, null);

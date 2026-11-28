@@ -124,6 +124,9 @@ function mount() {
         <label class="vh-ap-field" style="flex-direction:row;align-items:center;gap:6px;cursor:pointer">
           <input type="checkbox" id="apAutoPartition" checked style="width:auto">投递前 AI 自动选区
         </label>
+        <label class="vh-ap-field" style="flex-direction:row;align-items:center;gap:6px;cursor:pointer" title="自动投稿时默认勾选 B 站「内容含营销信息」创作者声明">
+          <input type="checkbox" id="apAutoPromotion" checked style="width:auto">自动标「内容含营销信息」
+        </label>
         <label class="vh-ap-field" style="flex-direction:row;align-items:center;gap:6px;cursor:pointer" title="仅清理渲染帧、分段与配音等可再生缓存；成片、字幕、文稿与素材完整保留">
           <input type="checkbox" id="apAutoPrune" checked style="width:auto">发布后自动清缓存
         </label>
@@ -151,6 +154,7 @@ function mount() {
       buildGapMinutes: Math.max(0, Number($('apBuildGap').value) || 0),
       publishIntervalSeconds: Math.max(60, Math.round((Number($('apPubGap').value) || 5) * 60)),
       autoPartition: $('apAutoPartition').checked,
+      autoPromotion: $('apAutoPromotion').checked,
       autoPrune: $('apAutoPrune').checked,
     };
   }
@@ -179,6 +183,7 @@ function mount() {
       $('apBuildGap').value = cfg.buildGapMinutes ?? 5;
       $('apPubGap').value = Math.max(1, Math.round((cfg.publishIntervalSeconds || 300) / 60));
       $('apAutoPartition').checked = cfg.autoPartition !== false;
+      $('apAutoPromotion').checked = cfg.autoPromotion !== false;
       $('apAutoPrune').checked = cfg.autoPrune !== false;
       formSeeded = true;
     }
@@ -234,10 +239,11 @@ function mount() {
     const partDesc = pub?.autoPartition !== false
       ? `AI 自动选区（兜底 ${pub?.partitionLabel || '已选分区'}）`
       : (pub?.partitionLabel || '已选分区');
+    const promoDesc = pub?.autoPromotion ? ' · 含营销声明' : '';
     const pubText = !pub ? '投稿状态未读取'
       : pub.lastAttempt?.state === 'running' && pub.attemptActive ? `自动投稿上传中（${pub.lastAttempt.id || '当前作品'}）`
       : interrupted ? `自动投稿待核对（上次「${pub.lastAttempt.id || '作品'}」中断未闭合）`
-      : pub.enabled ? `自动投稿开启（${Math.round((pub.intervalSeconds || 300) / 60)} 分钟/支 · ${partDesc}）`
+      : pub.enabled ? `自动投稿开启（${Math.round((pub.intervalSeconds || 300) / 60)} 分钟/支 · ${partDesc}${promoDesc}）`
       : pub.pauseReason ? `自动投稿已暂停（${pub.pauseReason}）`
       : '自动投稿未开启（开启巡航时自动联动）';
     $('apMetrics').innerHTML =
